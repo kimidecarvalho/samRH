@@ -1,0 +1,153 @@
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Poppins', sans-serif;
+}
+
+body {
+    background-color: #f5f5f5;;
+    min-height: 100vh;
+}
+
+.main-content {
+    padding-top: 50px;
+    min-height: calc(100vh - 100px);
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-bottom: 1rem;
+}
+
+.container {
+    background: white;
+    padding: 2rem;
+    border-radius: 25px;
+    width: 55%;
+    max-width: 1000px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.05);
+}
+
+h1 {
+    text-align: center;
+    font-size: 2.5rem;
+    margin-bottom: 2.5rem;
+    color: #000;
+}
+
+h1 span {
+    color: #68C3A3;
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.form-group label {
+    font-size: 12px;
+    color: #333;
+}
+
+.form-group input,
+.form-group select {
+    padding: 9px;
+    border: 1px solid #E0E0E0;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #666;
+}
+
+.form-group input::placeholder,
+.form-group select::placeholder {
+    color: #999;
+}
+
+.password-wrapper {
+    position: relative;
+}
+
+.password-toggle {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    color: #666;
+}
+
+select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23666666' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px !important;
+}
+
+.input-container {
+position: relative;
+display: flex;
+align-items: center;
+}
+
+.input-container input {
+    width: 100%;
+    padding-right: 35px; /* Espaço para o ícone */
+}
+
+.lock-icon {
+    position: absolute;
+    right: 10px;
+    color: rgb(6, 158, 95); /* Ícone vermelho */
+    font-size: 18px;
+}
+
+.confirm-button {
+    grid-column: 3;
+    margin-top: 27.4px;
+    padding: 6px 10px;
+    height: 37px;
+    background: #68C3A3;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.confirm-button:hover {
+    background: #5AB094;
+}
+
+@media (max-width: 768px) {
+    .header {
+        padding: 1rem;
+    }
+
+    .nav-menu {
+        gap: 1rem;
+    }
+
+    .container {
+        padding: 2rem;
+        width: 95%;
+        margin: 1rem;
+    }
+
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .confirm-button {
+        grid-column: 1;
+    }
+}

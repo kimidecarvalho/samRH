@@ -1,0 +1,360 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Poppins', sans-serif;
+  }
+  
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    background-color: white;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    width: 100%;
+    box-shadow: none;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.logo {
+    height: 80px;
+}
+
+.logo img {
+    height: 80px;
+}
+
+.nav-container {
+    flex-grow: 1;
+    display: flex;
+    justify-content: center;
+}
+
+.nav-menu {
+    display: flex;
+    gap: 20px;
+}
+
+.nav-menu a {
+    color: var(--secondary-color);
+    text-decoration: none;
+    font-weight: 500;
+    padding: 8px 15px;
+    border-radius: 50px;
+    transition: var(--transition);
+}
+
+.nav-menu a:hover {
+    background-color: var(--light-gray);
+    color: var(--primary-color);
+}
+
+.nav-menu a.active {
+    color: var(--primary-color);
+    position: relative;
+}
+
+.nav-menu a.active::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 20px;
+    height: 3px;
+    background-color: var(--primary-color);
+    border-radius: 10px;
+}
+
+  body {
+    background-color: #f5f5f5;
+    color: #000
+  }
+
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+      .user-section {
+          display: flex;
+          align-items: center;
+      }
+      
+      .user-dropdown {
+        display: flex;
+        width: 220px;
+        height: 32px;
+        align-items: center;
+        background-color: #3EB489;
+        color: white;
+        padding: 8px 15px;
+        border-radius: 25px;
+        margin-right: 10px;
+        cursor: pointer;
+  
+  }
+    
+      .user-avatar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background-color: #f5f5f5;
+        margin-right: 10px;
+        gap: 10px;
+        color: #000;
+        border: #3EB489 solid 1px;
+    
+    }
+      
+      .settings-icon {
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          background-color: #f5f5f5;
+          border: 2px solid #3EB489;
+          color: #3EB489;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          font-size: 18px;
+      }
+
+  .back-link {
+    display: inline-block;
+    color: #3EB489;
+    text-decoration: none;
+    margin: 1rem 0;
+    margin-left: 25px;
+  }
+  
+  .job-card {
+    background-color: white;
+    border-radius:25px;
+    padding: 1rem 1.4rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    max-height: 1%;
+    color: #000
+  }
+
+  .posting-container{
+    align-items: center;
+  }
+  
+  .job-title {
+    font-size: 1rem;
+    font-weight: bold;
+    margin-bottom: 0.25rem;
+  }
+  
+  .job-company {
+    font-size: 0.85rem ;
+  }
+  
+  .job-details {
+    display: flex;  
+    flex-wrap: wrap;
+  }
+
+  .job-meta-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.1rem;
+    font-size: 0.8rem;
+  }
+  
+  .job-meta-icon {
+    margin-right: 0.5rem;
+    color: #666;
+  }
+  
+  .status-buttons {
+    display: flex;
+    align-items: center;
+    justify-content: end;
+  }
+  
+  .status-tag {
+    padding: 0.2rem 0.8rem;
+    border-radius: 50px;
+    font-size: 0.7rem;
+    border: #e74c3c solid 1px;
+  }
+  
+  .closed-tag {
+    background-color: #ffdede;
+    color: #e74c3c;
+    margin-right: 27%;
+  }
+  
+  .apply-button {   
+    background-color: #ffdede;
+    color: #e74c3c;
+    padding: 0.5rem 1rem;
+    border-radius: 50px;
+    text-decoration: none;
+    font-size: 0.7rem;
+    margin-right: 7%;
+    padding: 0.3rem 0.9rem;
+    border: #e74c3c solid 1px;
+  }
+  
+  .section-card h2 {
+    font-size: 1rem;
+    font-weight: bold;
+  }
+  
+  .section-card-description h2 {
+    font-size: 0.9rem;
+    font-weight: bold;
+  }
+
+  .section-card{
+
+    font-size: 0.85rem;
+    color: #000
+  }
+
+  .section-card-description{
+    font-size: 0.85rem;
+    color: #000
+  }
+
+  .job-location, .job-salary {
+    margin-bottom: 0.5rem;
+  }
+  
+  .payment-details, .language-details {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+  
+  .payment-details::before, .language-details::before {
+    content: "•";
+    margin-right: 0.5rem;
+    color: #000;
+  }
+  
+  .schedule-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+  
+  .schedule-item {
+    margin-bottom: 0.5rem;
+  }
+  
+  .job-description p {
+    line-height: 1.6;
+  }
+
+  /* Estilo geral para texto */
+.section-card, .section-card-description, .job-meta-item, .job-title, .job-company {
+  color: #000;
+}
+
+/* Estilo para o segundo container com informações detalhadas */
+.section-card, .section-card-description {
+  padding: 1.5rem;
+  margin-bottom: 0;
+}
+
+/* Estilos para os títulos das seções */
+.section-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  color: #000;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+/* Estilos para informações de localização e salário */
+.job-location, .job-salary {
+  margin-bottom: 1rem;
+  line-height: 1.6;
+  color: #000;
+}
+
+/* Estilos para os itens com marcadores */
+.payment-details, .language-details {
+  display: flex;
+  margin-bottom: 0.7rem;
+  position: relative;
+  padding-left: 1.5rem;
+  color: #000;
+}
+
+.payment-details::before, .language-details::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: #000;
+}
+
+/* Estilos para a seção de carga horária */
+.job-timezone {
+  margin-bottom: 1rem;
+  color: #000;
+}
+
+.schedule-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  color: #000;
+}
+
+.schedule-item {
+  margin-bottom: 0.7rem;
+  line-height: 1.6;
+  color: #000;
+}
+
+/* Estilos para a descrição do trabalho */
+.job-description p {
+  line-height: 1.6;
+  color: #000;
+}
+
+/* Ajuste para o layout geral */
+.job-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Primeiro card com informações básicas */
+.job-card:first-of-type {
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+/* Espaçamento entre seções */
+.section-card + .section-card,
+.section-card + .section-card-description {
+  margin-top: 1rem;
+}
+
+/* Ajuste para garantir que todos os textos sejam pretos */
+strong {
+  color: #000;
+}

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="" href="sam2-05.png"style>
+    <link rel="stylesheet" href="../all.css/login.css">
+    <title>SAM - Login</title>
+</head>
+<style>
+    .logo{
+        height: 80px;
+    }
+    .forgot-password {
+        text-align: right;
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+    }
+
+    .forgot-password a {
+        color: #3EB489;
+        text-decoration: none;
+    }
+
+    .forgot-password a:hover {
+        text-decoration: underline;
+    }
+    
+</style>
+<body>
+    <header class="header">
+        <a href="login.php">
+            <img src="../fotos/sam30-13.png" alt="SAM Logo" class="logo">
+        </a>
+        <div class="nav-container">
+            <nav class="nav-menu">
+                <div class="dropdown">
+                    <a href="#" class="dropbtn">Produtos ▾</a>
+                    <div class="dropdown-content">
+                        <a href="#">Produto 1</a>
+                        <a href="#">Produto 2</a>
+                        <a href="#">Produto 3</a>
+                    </div>
+                </div>
+                <div class="dropdown">
+                    <a href="#" class="dropbtn">Funcionalidades ▾</a>
+                    <div class="dropdown-content">
+                        <a href="#">Funcionalidade 1</a>
+                        <a href="#">Funcionalidade 2</a>
+                        <a href="#">Funcionalidade 3</a>
+                    </div>
+                </div>
+                <a href="#">Preços</a>
+            </nav>
+        </div>
+        <div class="nav-buttons">
+            <a href="login.php">
+                <button class="btn btn-entrar">Entrar</button>
+            </a>
+            <a href="Registro_adm.php">
+                <button class="btn btn-criar">Criar empresa</button>
+            </a>
+        </div>
+    </header>
+    
+    <div class="login-container">
+        <!-- Formulário de login (mostrado por padrão) -->
+        <div class="login-card" id="loginCard">
+            <h2 class="login-title">Entrar</h2>
+            <form method="POST" id="loginForm">
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input 
+                        type="email" 
+                        id="email" 
+                        name="email" 
+                        placeholder="samrh@exemplo.com" 
+                        required
+                    >
+                </div>
+                <div class="form-group">
+                    <label for="senha">Senha</label>
+                    <input 
+                        type="password" 
+                        id="senha" 
+                        name="senha" 
+                        placeholder="Digite sua senha" 
+                        required
+                    >
+                    <div class="forgot-password">
+                        <a href="recuperar_senha.php">Esqueceu a senha?</a>
+                    </div>
+                </div>
+                <button type="submit" class="btn-continuar">Continuar</button>
+                <div class="signup-link">
+                    Ainda não tenho conta. <a href="Registro_adm.php">cadastrar-se</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

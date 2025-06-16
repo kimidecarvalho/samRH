@@ -1,0 +1,21 @@
+.header-buttons {
+    display: flex;           
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    height: 50px;
+    background: white;
+    padding: 8px;
+    border-radius: 25px;
+    width: 32%;
+
+}
+
+/* Adicionar nova regra para espaçar elementos */
+.header-buttons > *:not(:first-child) {
+    margin-left: 10px; /* Adiciona margem esquerda a todos os filhos diretos, exceto o primeiro */
+}
+
+.time {
+// ... existing code ...
+}
