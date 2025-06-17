@@ -1,6 +1,7 @@
 <?php
+// config/oauth_sample.php (NÃO COMMITAR)
 return [
-    'client_id' => '753539829375-4hjj8qrsvvemc7dhh572v72eb0vc0mj4.apps.googleusercontent.com',
-    'client_secret' => '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',
+    'client_id' => 'SEU_CLIENT_ID_AQUI',
+    'client_secret' => 'SEU_CLIENT_SECRET_AQUI',
     'redirect_uri' => 'http://localhost:8000/callback',
-]; 
+];
