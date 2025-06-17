@@ -50,6 +50,63 @@ unset($_SESSION['erros_registro_completo']);
             color: #721c24;
         }
 
+        /* Estilo para o select de prefixo */
+        .phone-prefix {
+            position: relative;
+            min-width: 85px;
+            max-width: 85px;
+        }
+
+        .prefix-select {
+            background: transparent;
+            border: none;
+            color: inherit;
+            font-size: 12px;
+            padding: 0 25px 0 10px;
+            margin: 0;
+            width: 100%;
+            cursor: pointer;
+            outline: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+        }
+
+        .prefix-select option {
+            background: white;
+            color: #333;
+            font-size: 12px;
+            padding: 8px;
+        }
+
+        .phone-prefix::after {
+            content: "";
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 12px;
+            height: 12px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='24' height='24' stroke='%232ca378' stroke-width='2' fill='none'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-size: contain;
+            pointer-events: none;
+        }
+
+        .phone-sufix {
+            flex: 1;
+            margin-left: 5px;
+        }
+
+        .phone-input {
+            text-align: center;
+            width: 100%;
+            padding: 4px 10px;
+            border: 1px solid #ccc;
+            border-radius: 25px;
+            font-size: 12px;
+        }
+
         /* Estilo atualizado para o layout 2x2 */
         .form-sections-grid {
             display: grid;
@@ -123,10 +180,21 @@ unset($_SESSION['erros_registro_completo']);
                             <label>Número de Telefone</label>
                             <div style="display: flex; flex: 1;">
                                 <div class="phone-prefix">
-                                    <span>+244</span>
+                                    <select name="phone_prefix" id="phone_prefix" class="prefix-select">
+                                        <option value="+244">+244 (Angola)</option>
+                                        <option value="+55">+55 (Brasil)</option>
+                                        <option value="+351">+351 (Portugal)</option>
+                                        <option value="+258">+258 (Moçambique)</option>
+                                        <option value="+238">+238 (Cabo Verde)</option>
+                                        <option value="+245">+245 (Guiné-Bissau)</option>
+                                        <option value="+239">+239 (São Tomé e Príncipe)</option>
+                                        <option value="+240">+240 (Guiné Equatorial)</option>
+                                        <option value="+241">+241 (Gabão)</option>
+                                        <option value="+242">+242 (Congo)</option>
+                                    </select>
                                 </div>
                                 <div class="phone-sufix">
-                                    <input type="text" class="phone-input" value="922222222">   
+                                    <input type="text" name="telefone" class="phone-input" placeholder="Ex: 923 456 789" pattern="[0-9]{9}" maxlength="9" required>   
                                 </div>
                             </div>
                         </div>
@@ -296,6 +364,13 @@ unset($_SESSION['erros_registro_completo']);
                 const dia = document.getElementById('dia').value.padStart(2, '0');
                 const mes = document.getElementById('mes').value.padStart(2, '0');
                 const ano = document.getElementById('ano').value;
+                
+                // Formatar o número de telefone
+                const telefoneInput = document.querySelector('input[name="telefone"]');
+                const prefixSelect = document.getElementById('phone_prefix');
+                if (telefoneInput.value) {
+                    telefoneInput.value = prefixSelect.value + telefoneInput.value.replace(/\s/g, '');
+                }
                 
                 if (dia && mes && ano && ano.length === 4) {
                     document.getElementById('data_nascimento').value = `${ano}-${mes}-${dia}`;

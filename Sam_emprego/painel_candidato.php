@@ -31,6 +31,20 @@ if (isset($candidato['perfil_completo']) && $candidato['perfil_completo'] == 0) 
 $candidaturas = [];
 $temCandidaturas = false;
 
+// Buscar mensagens do candidato
+$mensagens = [];
+$stmt = $conn->prepare("
+    SELECT m.*, c.vaga_id, v.titulo as vaga_titulo, e.nome as empresa_nome
+    FROM mensagens m
+    JOIN candidaturas c ON m.candidatura_id = c.id
+    JOIN vagas v ON c.vaga_id = v.id
+    JOIN empresas_recrutamento e ON v.empresa_id = e.id
+    WHERE c.candidato_id = ?
+    ORDER BY m.data_envio DESC
+");
+$stmt->execute([$candidato_id]);
+$mensagens = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
 // Verifica se as tabelas candidaturas e vagas existem
 $tabelas_existem = true;
 $result = $conn->query("SHOW TABLES LIKE 'candidaturas'");
@@ -44,9 +58,10 @@ if ($result->num_rows == 0) {
 }
 
 if ($tabelas_existem) {
-    $query = "SELECT c.*, v.titulo as vaga_titulo, empresa_id
+    $query = "SELECT c.*, v.titulo as vaga_titulo, e.nome as empresa_nome
               FROM candidaturas c 
               JOIN vagas v ON c.vaga_id = v.id 
+              JOIN empresas_recrutamento e ON v.empresa_id = e.id
               WHERE c.candidato_id = ? 
               ORDER BY c.data_candidatura DESC";
     
@@ -109,7 +124,7 @@ if (!empty($candidato['curriculo_path'] ?? $candidato['cv_anexo'] ?? '')) $progr
 
         body {
             font-family: 'Poppins', sans-serif;
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            background-color: #f5f5f5;
             margin: 0;
             padding: 0;
             color: #333;
@@ -277,6 +292,18 @@ if (!empty($candidato['curriculo_path'] ?? $candidato['cv_anexo'] ?? '')) $progr
         .content-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        .left-column {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .right-column {
+            display: flex;
+            flex-direction: column;
             gap: 24px;
         }
 
@@ -624,6 +651,210 @@ if (!empty($candidato['curriculo_path'] ?? $candidato['cv_anexo'] ?? '')) $progr
             color: white !important;
         }
 
+        /* Mensagens section */
+/* Mensagens section */
+.mensagens-container {
+    max-height: 500px;
+    overflow-y: auto;
+    padding-right: 10px;
+}
+
+.mensagens-container::-webkit-scrollbar {
+    width: 6px;
+}
+
+.mensagens-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.mensagens-container::-webkit-scrollbar-thumb {
+    background: var(--primary-color);
+    border-radius: 10px;
+}
+
+.mensagens-container::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-dark);
+}
+
+.mensagem-item {
+    background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 12px;
+    border-left: 4px solid var(--primary-color);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    transition: var(--transition);
+    position: relative;
+    overflow: hidden;
+}
+
+.mensagem-item::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 60px;
+    height: 60px;
+    background: radial-gradient(circle, rgba(62, 180, 137, 0.04) 0%, rgba(255, 255, 255, 0) 70%);
+    border-radius: 50%;
+    transform: translate(20%, -20%);
+}
+
+.mensagem-item:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 5px 20px rgba(0,0,0,0.12);
+    border-left-color: var(--primary-light);
+}
+
+.mensagem-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 10px;
+    gap: 12px;
+    position: relative;
+    z-index: 1;
+}
+
+.mensagem-title {
+    margin: 0;
+    color: var(--secondary-color);
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.3;
+    flex: 1;
+}
+
+.mensagem-empresa {
+    color: var(--primary-color);
+    font-weight: 500;
+}
+
+.mensagem-data {
+    color: #718096;
+    font-size: 0.8rem;
+    font-weight: 500;
+    background-color: rgba(113, 128, 150, 0.08);
+    padding: 3px 8px;
+    border-radius: 15px;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mensagem-data::before {
+    content: '📅';
+    font-size: 0.8rem;
+}
+
+.mensagem-conteudo {
+    white-space: pre-line;
+    color: #2d3748;
+    line-height: 1.5;
+    font-size: 0.9rem;
+    position: relative;
+    z-index: 1;
+    background: rgba(255, 255, 255, 0.5);
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(62, 180, 137, 0.08);
+}
+
+.mensagem-conteudo a {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 500;
+    border-bottom: 1px solid transparent;
+    transition: var(--transition);
+}
+
+.mensagem-conteudo a:hover {
+    color: var(--primary-dark);
+    border-bottom-color: var(--primary-color);
+}
+
+/* Estilo para mensagens sem conteúdo */
+.mensagens-empty {
+    text-align: center;
+    padding: 50px 30px;
+    background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+    border-radius: 15px;
+    border: 2px dashed #e2e8f0;
+    transition: var(--transition);
+}
+
+.mensagens-empty:hover {
+    border-color: var(--primary-color);
+    background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
+}
+
+.mensagens-empty i {
+    font-size: 3.5rem;
+    color: var(--primary-color);
+    margin-bottom: 20px;
+    display: block;
+    opacity: 0.7;
+}
+
+.mensagens-empty p {
+    margin: 0;
+    color: #64748b;
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+/* Badges para diferentes tipos de mensagem */
+.mensagem-tipo {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+}
+
+.mensagem-tipo-info {
+    background-color: #dbeafe;
+    color: #1e40af;
+}
+
+.mensagem-tipo-sucesso {
+    background-color: #d1fae5;
+    color: #059669;
+}
+
+.mensagem-tipo-aviso {
+    background-color: #fef3c7;
+    color: #d97706;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+    .mensagem-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .mensagem-data {
+        align-self: flex-end;
+        font-size: 0.75rem;
+    }
+    
+    .mensagem-item {
+        padding: 14px 16px;
+        margin-bottom: 10px;
+    }
+    
+    .mensagens-container {
+        max-height: 400px;
+    }
+}
+
         /* Animations */
         .fade-in {
             animation: fadeIn 0.5s ease-in-out;
@@ -717,237 +948,282 @@ if (!empty($candidato['curriculo_path'] ?? $candidato['cv_anexo'] ?? '')) $progr
         </div>
         
         <div class="content-grid">
-            <div class="panel-section fade-in">
-                <div class="panel-header">
-                    <div>Dados Pessoais</div>
-                    <a href="editar_perfil.php" class="btn btn-outline" style="background-color: white; color: var(--primary-color); padding: 6px 15px; font-size: 0.9rem;">
-                        <i class="fas fa-edit"></i> Editar Perfil
-                    </a>
-                </div>
-                <div class="panel-body">
-                    <!-- Estatísticas do perfil -->
-                    <div class="stats-container">
-                        <div class="stat-card">
-                            <h3>Total de Candidaturas</h3>
-                            <div class="number"><?php echo $totalCandidaturas; ?></div>
-                        </div>
-                        
-                        <div class="stat-card">
-                            <h3>Em Processo</h3>
-                            <div class="number"><?php echo $emProcesso; ?></div>
-                        </div>
-                        
-                        <div class="stat-card">
-                            <h3>Aprovadas</h3>
-                            <div class="number"><?php echo $aprovadas; ?></div>
-                        </div>
+            <div class="left-column">
+                <div class="panel-section fade-in">
+                    <div class="panel-header">
+                        <div>Dados Pessoais</div>
+                        <a href="editar_perfil.php" class="btn btn-outline" style="background-color: white; color: var(--primary-color); padding: 6px 15px; font-size: 0.9rem;">
+                            <i class="fas fa-edit"></i> Editar Perfil
+                        </a>
                     </div>
-                
-                    <div class="profile-grid">
-                        <div class="profile-item">
-                            <span class="profile-label">Nome Completo</span>
-                            <div class="profile-value"><?php echo htmlspecialchars($candidato['nome'] ?? 'Não informado'); ?></div>
-                        </div>
-                        
-                        <div class="profile-item">
-                            <span class="profile-label">E-mail</span>
-                            <div class="profile-value"><?php echo htmlspecialchars($candidato['email'] ?? 'Não informado'); ?></div>
-                        </div>
-                        
-                        <div class="profile-item">
-                            <span class="profile-label">Telefone</span>
-                            <div class="profile-value"><?php echo htmlspecialchars($candidato['telefone'] ?? 'Não informado'); ?></div>
-                        </div>
-                        
-                        <div class="profile-item">
-                            <span class="profile-label">Data de Nascimento</span>
-                            <div class="profile-value">
-                                <?php 
-                                if (!empty($candidato['data_nascimento'])) {
-                                    $data = new DateTime($candidato['data_nascimento']);
-                                    echo $data->format('d/m/Y');
-                                } else {
-                                    echo 'Não informado';
-                                }
-                                ?>
+                    <div class="panel-body">
+                        <!-- Estatísticas do perfil -->
+                        <div class="stats-container">
+                            <div class="stat-card">
+                                <h3>Total de Candidaturas</h3>
+                                <div class="number"><?php echo $totalCandidaturas; ?></div>
+                            </div>
+                            
+                            <div class="stat-card">
+                                <h3>Em Processo</h3>
+                                <div class="number"><?php echo $emProcesso; ?></div>
+                            </div>
+                            
+                            <div class="stat-card">
+                                <h3>Aprovadas</h3>
+                                <div class="number"><?php echo $aprovadas; ?></div>
                             </div>
                         </div>
-                        
-                        <div class="profile-item">
-                            <span class="profile-label">Endereço</span>
-                            <div class="profile-value"><?php echo htmlspecialchars($candidato['endereco'] ?? 'Não informado'); ?></div>
-                        </div>
-                        
-                        <div class="profile-item">
-                            <span class="profile-label">Status da Conta</span>
-                            <div class="profile-value">
-                                <?php 
-                                $status = $candidato['status'] ?? 'Pendente';
-                                $badge_class = '';
-                                
-                                switch ($status) {
-                                    case 'Ativo':
-                                        $badge_class = 'badge-success';
-                                        break;
-                                    case 'Inativo':
-                                        $badge_class = 'badge-danger';
-                                        break;
-                                    case 'Pendente':
-                                        $badge_class = 'badge-warning';
-                                        break;
-                                }
-                                ?>
-                                <span class="badge <?php echo $badge_class; ?>">
-                                    <?php echo htmlspecialchars($status); ?>
-                                </span>
+                    
+                        <div class="profile-grid">
+                            <div class="profile-item">
+                                <span class="profile-label">Nome Completo</span>
+                                <div class="profile-value"><?php echo htmlspecialchars($candidato['nome'] ?? 'Não informado'); ?></div>
                             </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Progress Bar -->
-                    <div class="profile-progress">
-                        <div class="progress-title">
-                            <span>Perfil completo</span>
-                            <span><strong><?php echo $progress; ?>%</strong></span>
-                        </div>
-                        <div class="progress-bar-container">
-                            <div class="progress-bar" style="width: <?php echo $progress; ?>%"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="panel-section fade-in">
-                <div class="panel-header">
-                    <div>Informações Profissionais</div>
-                </div>
-                <div class="panel-body">
-                    <div class="profile-item">
-                        <span class="profile-label">Formação Acadêmica</span>
-                        <div class="profile-value"><?php echo nl2br(htmlspecialchars($candidato['formacao'] ?? 'Não informado')); ?></div>
-                    </div>
-                    
-                    <div class="profile-item">
-                        <span class="profile-label">Experiência Profissional</span>
-                        <div class="profile-value"><?php echo nl2br(htmlspecialchars($candidato['experiencia'] ?? 'Não informado')); ?></div>
-                    </div>
-                    
-                    <div class="profile-item">
-                        <span class="profile-label">Habilidades</span>
-                        <div class="profile-value"><?php echo nl2br(htmlspecialchars($candidato['habilidades'] ?? 'Não informado')); ?></div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="panel-section fade-in">
-                <div class="panel-header">
-                    <div>Currículo</div>
-                </div>
-                <div class="panel-body">
-                    <?php 
-                    $cv_path = $candidato['curriculo_path'] ?? $candidato['cv_anexo'] ?? null;
-                    
-                    if (!empty($cv_path)): 
-                    ?>
-                        <div class="cv-container">
-                            <div class="cv-icon">
-                                <i class="fas fa-file-pdf"></i>
+                            
+                            <div class="profile-item">
+                                <span class="profile-label">E-mail</span>
+                                <div class="profile-value"><?php echo htmlspecialchars($candidato['email'] ?? 'Não informado'); ?></div>
                             </div>
-                            <div class="cv-info">
-                                <div class="cv-name">Meu Currículo</div>
-                                <div class="cv-meta">
+                            
+                            <div class="profile-item">
+                                <span class="profile-label">Telefone</span>
+                                <div class="profile-value"><?php echo htmlspecialchars($candidato['telefone'] ?? 'Não informado'); ?></div>
+                            </div>
+                            
+                            <div class="profile-item">
+                                <span class="profile-label">Data de Nascimento</span>
+                                <div class="profile-value">
                                     <?php 
-                                    $pathinfo = pathinfo($cv_path);
-                                    echo htmlspecialchars($pathinfo['basename']);
+                                    if (!empty($candidato['data_nascimento'])) {
+                                        $data = new DateTime($candidato['data_nascimento']);
+                                        echo $data->format('d/m/Y');
+                                    } else {
+                                        echo 'Não informado';
+                                    }
                                     ?>
                                 </div>
                             </div>
-                            <div>
-                                <a href="<?php echo htmlspecialchars($cv_path); ?>" target="_blank" class="btn btn-outline">
-                                    <i class="fas fa-eye"></i> Visualizar
-                                </a>
+                            
+                            <div class="profile-item">
+                                <span class="profile-label">Endereço</span>
+                                <div class="profile-value"><?php echo htmlspecialchars($candidato['endereco'] ?? 'Não informado'); ?></div>
+                            </div>
+                            
+                            <div class="profile-item">
+                                <span class="profile-label">Status da Conta</span>
+                                <div class="profile-value">
+                                    <?php 
+                                    $status = $candidato['status'] ?? 'Pendente';
+                                    $badge_class = '';
+                                    
+                                    switch ($status) {
+                                        case 'Ativo':
+                                            $badge_class = 'badge-success';
+                                            break;
+                                        case 'Inativo':
+                                            $badge_class = 'badge-danger';
+                                            break;
+                                        case 'Pendente':
+                                            $badge_class = 'badge-warning';
+                                            break;
+                                    }
+                                    ?>
+                                    <span class="badge <?php echo $badge_class; ?>">
+                                        <?php echo htmlspecialchars($status); ?>
+                                    </span>
+                                </div>
                             </div>
                         </div>
-                    <?php else: ?>
-                        <div class="empty-state">
-                            <i class="fas fa-file-upload"></i>
-                            <p>Você ainda não enviou o seu currículo.</p>
-                            <a href="atualizar_curriculo.php" class="btn btn-primary">
-                                <i class="fas fa-upload"></i> Enviar Currículo
-                            </a>
+                        
+                        <!-- Progress Bar -->
+                        <div class="profile-progress">
+                            <div class="progress-title">
+                                <span>Perfil completo</span>
+                                <span><strong><?php echo $progress; ?>%</strong></span>
+                            </div>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar" style="width: <?php echo $progress; ?>%"></div>
+                            </div>
                         </div>
-                    <?php endif; ?>
+                    </div>
+                </div>
+
+                <div class="panel-section fade-in">
+                    <div class="panel-header">
+                        <div>Currículo</div>
+                    </div>
+                    <div class="panel-body">
+                        <?php 
+                        $cv_path = $candidato['curriculo_path'] ?? $candidato['cv_anexo'] ?? null;
+                        
+                        if (!empty($cv_path)): 
+                        ?>
+                            <div class="cv-container">
+                                <div class="cv-icon">
+                                    <i class="fas fa-file-pdf"></i>
+                                </div>
+                                <div class="cv-info">
+                                    <div class="cv-name">Meu Currículo</div>
+                                    <div class="cv-meta">
+                                        <?php 
+                                        $pathinfo = pathinfo($cv_path);
+                                        echo htmlspecialchars($pathinfo['basename']);
+                                        ?>
+                                    </div>
+                                </div>
+                                <div>
+                                    <a href="<?php echo htmlspecialchars($cv_path); ?>" target="_blank" class="btn btn-outline">
+                                        <i class="fas fa-eye"></i> Visualizar
+                                    </a>
+                                </div>
+                            </div>
+                        <?php else: ?>
+                            <div class="empty-state">
+                                <i class="fas fa-file-upload"></i>
+                                <p>Você ainda não enviou o seu currículo.</p>
+                                <a href="atualizar_curriculo.php" class="btn btn-primary">
+                                    <i class="fas fa-upload"></i> Enviar Currículo
+                                </a>
+                            </div>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </div>
             
-            <?php if ($tabelas_existem && $temCandidaturas): ?>
-            <div class="panel-section fade-in">
-                <div class="panel-header">
-                    <div>Candidaturas Recentes</div>
-                    <a href="listar_vagas.php" class="btn btn-outline" style="background-color: white; color: var(--primary-color); padding: 6px 15px; font-size: 0.9rem;">
-                        <i class="fas fa-search"></i> Explorar Vagas
-                    </a>
+            <div class="right-column">
+                <div class="panel-section fade-in">
+                    <div class="panel-header">
+                        <div>Informações Profissionais</div>
+                    </div>
+                    <div class="panel-body">
+                        <div class="profile-item">
+                            <span class="profile-label">Formação Acadêmica</span>
+                            <div class="profile-value"><?php echo nl2br(htmlspecialchars($candidato['formacao'] ?? 'Não informado')); ?></div>
+                        </div>
+                        
+                        <div class="profile-item">
+                            <span class="profile-label">Experiência Profissional</span>
+                            <div class="profile-value"><?php echo nl2br(htmlspecialchars($candidato['experiencia'] ?? 'Não informado')); ?></div>
+                        </div>
+                        
+                        <div class="profile-item">
+                            <span class="profile-label">Habilidades</span>
+                            <div class="profile-value"><?php echo nl2br(htmlspecialchars($candidato['habilidades'] ?? 'Não informado')); ?></div>
+                        </div>
+                    </div>
                 </div>
-                <div class="panel-body">
-                    <?php if (count($candidaturas) > 0): ?>
-                        <div style="max-height: 500px; overflow-y: auto; padding-right: 10px;">
-                            <?php foreach ($candidaturas as $candidatura): ?>
-                                <div class="candidatura-item">
-                                    <h3><?php echo htmlspecialchars($candidatura['vaga_titulo']); ?></h3>
-                                    
-                                    <p>
-                                        <strong>Empresa:</strong> <?php echo htmlspecialchars($candidatura['empresa']); ?>
-                                    </p>
-                                    
-                                    <p>
-                                        <strong>Data da candidatura:</strong>
-                                        <?php 
-                                        $data = new DateTime($candidatura['data_candidatura']);
-                                        echo $data->format('d/m/Y H:i'); 
-                                        ?>
-                                    </p>
-                                    
-                                    <p>
-                                        <strong>Status:</strong>
-                                        <?php 
-                                        $status = $candidatura['status'] ?? 'Em análise';
-                                        $badge_class = '';
+                
+                <?php if ($tabelas_existem && $temCandidaturas): ?>
+                <div class="panel-section fade-in">
+                    <div class="panel-header">
+                        <div>Candidaturas Recentes</div>
+                        <a href="listar_vagas.php" class="btn btn-outline" style="background-color: white; color: var(--primary-color); padding: 6px 15px; font-size: 0.9rem;">
+                            <i class="fas fa-search"></i> Explorar Vagas
+                        </a>
+                    </div>
+                    <div class="panel-body">
+                        <?php if (count($candidaturas) > 0): ?>
+                            <div style="max-height: 500px; overflow-y: auto; padding-right: 10px;">
+                                <?php foreach ($candidaturas as $candidatura): ?>
+                                    <div class="candidatura-item">
+                                        <h3><?php echo htmlspecialchars($candidatura['vaga_titulo']); ?></h3>
                                         
-                                        switch ($status) {
-                                            case 'Aprovado':
-                                            case 'Aprovada':
-                                                $badge_class = 'badge-success';
-                                                break;
-                                            case 'Rejeitado':
-                                            case 'Rejeitada':
-                                                $badge_class = 'badge-danger';
-                                                break;
-                                            default:
-                                                $badge_class = 'badge-warning';
-                                        }
-                                        ?>
-                                        <span class="badge <?php echo $badge_class; ?>">
-                                            <?php echo htmlspecialchars($status); ?>
-                                        </span>
-                                    </p>
-                                    <a href="ver_vaga.php?id=<?php echo $candidatura['vaga_id']; ?>" class="btn btn-outline btn-sm">
-                                        <i class="fas fa-eye"></i> Ver Vaga
-                                    </a>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                    <?php else: ?>
-                        <div class="empty-state">
-                            <i class="fas fa-search"></i>
-                            <p>Você ainda não se candidatou para nenhuma vaga.</p>
-                            <a href="listar_vagas.php" class="btn btn-primary">
-                                <i class="fas fa-briefcase"></i> Explorar Vagas
-                            </a>
-                        </div>
-                    <?php endif; ?>
+                                        <p>
+                                            <strong>Empresa:</strong> <?php echo htmlspecialchars($candidatura['empresa_nome']); ?>
+                                        </p>
+                                        
+                                        <p>
+                                            <strong>Data da candidatura:</strong>
+                                            <?php 
+                                            $data = new DateTime($candidatura['data_candidatura']);
+                                            echo $data->format('d/m/Y H:i'); 
+                                            ?>
+                                        </p>
+                                        
+                                        <p>
+                                            <strong>Status:</strong>
+                                            <?php 
+                                            $status = $candidatura['status'] ?? 'Em análise';
+                                            $badge_class = '';
+                                            
+                                            switch ($status) {
+                                                case 'Aprovado':
+                                                case 'Aprovada':
+                                                    $badge_class = 'badge-success';
+                                                    break;
+                                                case 'Rejeitado':
+                                                case 'Rejeitada':
+                                                    $badge_class = 'badge-danger';
+                                                    break;
+                                                default:
+                                                    $badge_class = 'badge-warning';
+                                            }
+                                            ?>
+                                            <span class="badge <?php echo $badge_class; ?>">
+                                                <?php echo htmlspecialchars($status); ?>
+                                            </span>
+                                        </p>
+                                        <a href="job_view_page.php?id=<?php echo $candidatura['vaga_id']; ?>" class="btn btn-outline btn-sm" style="margin-top:10px;">
+                                            <i class="fas fa-eye"></i> Ver Vaga
+                                        </a>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php else: ?>
+                            <div class="empty-state">
+                                <i class="fas fa-search"></i>
+                                <p>Você ainda não se candidatou para nenhuma vaga.</p>
+                                <a href="listar_vagas.php" class="btn btn-primary">
+                                    <i class="fas fa-briefcase"></i> Explorar Vagas
+                                </a>
+                            </div>
+                        <?php endif; ?>
+                    </div>
                 </div>
+                <?php endif; ?>
             </div>
-            <?php endif; ?>
+        </div>
+        <div class="panel-section fade-in">
+            <div class="panel-header">
+                <div>Mensagens</div>
+            </div>
+            <div class="panel-body">
+                <?php if (!empty($mensagens)): ?>
+                    <div class="mensagens-container">
+                        <?php foreach ($mensagens as $mensagem): ?>
+                            <div class="mensagem-item">
+                                <div class="mensagem-header">
+                                    <h4 class="mensagem-title">
+                                        <?php echo htmlspecialchars($mensagem['vaga_titulo']); ?> - 
+                                        <span class="mensagem-empresa"><?php echo htmlspecialchars($mensagem['empresa_nome']); ?></span>
+                                    </h4>
+                                    <span class="mensagem-data">
+                                        <?php echo date('d/m/Y H:i', strtotime($mensagem['data_envio'])); ?>
+                                    </span>
+                                </div>
+                                <div class="mensagem-conteudo">
+                                    <?php 
+                                    $conteudo = htmlspecialchars($mensagem['mensagem']);
+                                    // Converte URLs em links clicáveis
+                                    $conteudo = preg_replace(
+                                        '/(https?:\/\/[^\s]+)/',
+                                        '<a href="$1" target="_blank">$1</a>',
+                                        $conteudo
+                                    );
+                                    echo nl2br($conteudo); 
+                                    ?>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php else: ?>
+                    <div class="mensagens-empty">
+                        <i class="fas fa-envelope-open"></i>
+                        <p>Você ainda não tem mensagens.</p>
+                    </div>
+                <?php endif; ?>
+            </div>
         </div>
     </div>
 

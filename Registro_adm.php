@@ -1,4 +1,4 @@
-﻿<?php
+﻿﻿<?php
 require_once "config.php";
 $sweetalert = "";
 
@@ -8,50 +8,33 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $senha = $_POST["senha"];
     $telefone = trim($_POST["telefone_formatado"]);
 
-    // ValidaÃ§Ã£o de campos obrigatÃ³rios
+    // Validação de campos obrigatórios
     if (empty($nome) || empty($email) || empty($senha) || empty($telefone)) {
-        $sweetalert = "Swal.fire('Erro!', 'Todos os campos sÃ£o obrigatÃ³rios!', 'error');";
+        $sweetalert = "Swal.fire('Erro!', 'Todos os campos são obrigatórios!', 'error');";
     } else {
-        // ValidaÃ§Ã£o de e-mail
+        // Validação de e-mail
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $sweetalert = "Swal.fire('Erro!', 'E-mail invÃ¡lido!', 'error');";
+            $sweetalert = "Swal.fire('Erro!', 'E-mail inválido!', 'error');";
         } else {
-            // ValidaÃ§Ã£o de senha
+            // Validação de senha
             if (strlen($senha) < 8) {
                 $sweetalert = "Swal.fire('Erro!', 'A senha deve ter pelo menos 8 caracteres!', 'error');";
             } else {
-                // Verifica se o e-mail jÃ¡ estÃ¡ cadastrado
-                $sql_check = "SELECT id_adm FROM adm WHERE email = ?";
-                $stmt_check = $conn->prepare($sql_check);
-                $stmt_check->bind_param("s", $email);
-                $stmt_check->execute();
-                $stmt_check->store_result();
+                // Hash da senha
+                $senha_hash = password_hash($senha, PASSWORD_DEFAULT);
 
-                if ($stmt_check->num_rows > 0) {
-                    $sweetalert = "Swal.fire('Erro!', 'Este e-mail jÃ¡ estÃ¡ cadastrado!', 'error');";
+                // Insere os dados no banco sam
+                $sql = "INSERT INTO adm (nome, email, senha, telefone) VALUES (?, ?, ?, ?)";
+                $stmt = $conn->prepare($sql);
+                $stmt->bind_param("ssss", $nome, $email, $senha_hash, $telefone);
+
+                if ($stmt->execute()) {
+                    $adm_id = $conn->insert_id;
+                    $sweetalert = "Swal.fire({ title: 'Cadastro realizado!', text: 'Você será redirecionado para a página de login.', icon: 'success' }).then(() => { window.location.href = 'login.php'; });";
                 } else {
-                    // Hash da senha
-                    $senha_hash = password_hash($senha, PASSWORD_DEFAULT);
-
-                    // Insere os dados no banco
-                    $sql = "INSERT INTO adm (nome, email, senha, telefone) VALUES (?, ?, ?, ?)";
-                    $stmt = $conn->prepare($sql);
-                    $stmt->bind_param("ssss", $nome, $email, $senha_hash, $telefone);
-
-                    if ($stmt->execute()) {
-                        // Obter o ID do administrador inserido
-                        $adm_id = $conn->insert_id;
-                        
-                        // Removi o código que criava uma duplicata no app_empresas
-                        // O cadastro da empresa no app será feito apenas pelo trigger quando a empresa for cadastrada
-                        
-                        $sweetalert = "Swal.fire({ title: 'Cadastro realizado!', text: 'VocÃª serÃ¡ redirecionado para a pÃ¡gina de login.', icon: 'success' }).then(() => { window.location.href = 'login.php'; });";
-                    } else {
-                        $sweetalert = "Swal.fire('Erro!', 'Erro ao cadastrar. Tente novamente.', 'error');";
-                    }
-                    $stmt->close();
+                    $sweetalert = "Swal.fire('Erro!', 'Erro ao cadastrar. Tente novamente.', 'error');";
                 }
-                $stmt_check->close();
+                $stmt->close();
             }
         }
     }

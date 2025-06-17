@@ -1,3 +1,29 @@
+<?php
+session_start();
+
+// Verificar se o usuário está autenticado
+if (!isset($_SESSION['id_empresa']) && !isset($_SESSION['empresa_id'])) {
+    header("Location: login.php");
+    exit;
+}
+
+require_once 'config/database.php';
+
+// Buscar informações da empresa usando o ID da sessão
+try {
+    $empresa_id = isset($_SESSION['empresa_id']) ? $_SESSION['empresa_id'] : $_SESSION['id_empresa'];
+    $stmt = $pdo->prepare("SELECT nome FROM empresas_recrutamento WHERE id = ?");
+    $stmt->execute([$empresa_id]);
+    $empresa = $stmt->fetch();
+    
+    if (!$empresa) {
+        header("Location: login.php");
+        exit;
+    }
+} catch (PDOException $e) {
+    $erro = "Erro ao carregar dados: " . $e->getMessage();
+}
+?>
 <!DOCTYPE html>
 <html lang="pt">
 <head>
@@ -474,6 +500,18 @@
       z-index: 1;
     }
     
+    .progress-indicator::after {
+      content: '';
+      position: absolute;
+      top: 15px;
+      left: 0;
+      width: var(--progress-width, 0%);
+      height: 2px;
+      background-color: var(--primary);
+      z-index: 1;
+      transition: width 0.3s ease;
+    }
+    
     .progress-step {
       display: flex;
       flex-direction: column;
@@ -502,6 +540,7 @@
       color: var(--gray-500);
       text-align: center;
       font-weight: 500;
+      transition: all 0.3s ease;
     }
     
     .progress-step.active .step-circle {
@@ -518,6 +557,10 @@
       background-color: var(--primary);
       border-color: var(--primary);
       color: white;
+    }
+    
+    .progress-step.completed .step-label {
+      color: var(--primary);
     }
     
     /* Field tooltip */
@@ -598,7 +641,7 @@
       Voltar à gestão de vagas
     </a>
     
-    <form action="save_job.php" method="post" class="form-container" id="job-form">
+    <form action="save_job.php" method="post" class="form-container" id="job-form" onsubmit="return false;">
       <h1 class="form-title">Cadastrar Nova Vaga</h1>
       
       <div class="progress-indicator">
@@ -631,19 +674,19 @@
         <div class="form-row">
           <div class="form-column">
             <label for="company_name" class="required-field">Nome da Empresa</label>
-            <input type="text" id="company_name" name="company_name" placeholder="Ex: Grupo Kurt" required>
+            <input type="text" id="company_name" name="company_name" value="<?php echo htmlspecialchars($empresa['nome']); ?>" readonly>
           </div>
           <div class="form-column">
             <label for="job_category" class="required-field">Categoria</label>
             <select id="job_category" name="job_category" required>
               <option value="">Selecione uma categoria</option>
-              <option value="1">Logística e Distribuição</option>
-              <option value="2">Tecnologia da Informação</option>
-              <option value="3">Vendas e Marketing</option>
-              <option value="4">Administrativo</option>
-              <option value="5">Recursos Humanos</option>
-              <option value="6">Financeiro</option>
-              <option value="7">Outro</option>
+              <option value="Logística e Distribuição">Logística e Distribuição</option>
+              <option value="Tecnologia da Informação">Tecnologia da Informação</option>
+              <option value="Vendas e Marketing">Vendas e Marketing</option>
+              <option value="Administrativo">Administrativo</option>
+              <option value="Recursos Humanos">Recursos Humanos</option>
+              <option value="Financeiro">Financeiro</option>
+              <option value="Outro">Outro</option>
             </select>
           </div>
         </div>
@@ -652,13 +695,48 @@
           <label for="job_status" class="required-field">Status da Vaga</label>
           <div class="status-options">
             <div class="status-option">
-              <input type="radio" id="status_open" name="job_status" value="open" checked>
+              <input type="radio" id="status_open" name="job_status" value="Aberta" checked>
               <label for="status_open">Vaga Aberta</label>
             </div>
             <div class="status-option">
-              <input type="radio" id="status_closed" name="job_status" value="closed">
+              <input type="radio" id="status_closed" name="job_status" value="Fechada">
               <label for="status_closed">Vaga Fechada</label>
             </div>
+            <div class="status-option">
+              <input type="radio" id="status_paused" name="job_status" value="Pausada">
+              <label for="status_paused">Vaga Pausada</label>
+            </div>
+            <div class="status-option">
+              <input type="radio" id="status_draft" name="job_status" value="Rascunho">
+              <label for="status_draft">Rascunho</label>
+            </div>
+            <div class="status-option">
+              <input type="radio" id="status_analysis" name="job_status" value="Em análise">
+              <label for="status_analysis">Em Análise</label>
+            </div>
+            <div class="status-option">
+              <input type="radio" id="status_finished" name="job_status" value="Finalizada">
+              <label for="status_finished">Finalizada</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="expiration_date">Data de Expiração</label>
+          <input type="date" id="expiration_date" name="data_expiracao" min="<?php echo date('Y-m-d'); ?>">
+          <p class="small-text">Data limite para candidaturas. Se não definida, a vaga ficará aberta indefinidamente.</p>
+        </div>
+
+        <div class="form-row">
+          <div class="form-column">
+            <label for="location_type" class="required-field">Tipo de Localização</label>
+            <select id="location_type" name="localizacao_tipo" required>
+              <option value="">Selecione uma opção</option>
+              <option value="nacional">Nacional</option>
+              <option value="internacional">Internacional</option>
+              <option value="regional">Regional</option>
+              <option value="local">Local</option>
+            </select>
           </div>
         </div>
       </div>
@@ -707,9 +785,9 @@
           <div class="form-column">
             <label for="salary_period" class="required-field">Período</label>
             <select id="salary_period" name="salary_period" required>
-              <option value="monthly">Mensal</option>
-              <option value="weekly">Semanal</option>
-              <option value="hourly">Por Hora</option>
+              <option value="mensal">Mensal</option>
+              <option value="semanal">Semanal</option>
+              <option value="hora">Por Hora</option>
             </select>
           </div>
         </div>
@@ -748,22 +826,22 @@
             <label for="timezone" class="required-field">Fuso Horário</label>
             <select id="timezone" name="timezone" required>
               <option value="">Selecione uma opção</option>
-              <option value="gmt+1">África Ocidental (GMT +1)</option>
-              <option value="gmt+0">GMT</option>
-              <option value="gmt-3">Brasil (GMT -3)</option>
-              <option value="gmt+2">África Central (GMT +2)</option>
-              <option value="gmt+3">África Oriental (GMT +3)</option>
+              <option value="GMT+1">África Ocidental (GMT +1)</option>
+              <option value="GMT+0">GMT</option>
+              <option value="GMT-3">Brasil (GMT -3)</option>
+              <option value="GMT+2">África Central (GMT +2)</option>
+              <option value="GMT+3">África Oriental (GMT +3)</option>
             </select>
           </div>
           <div class="form-column">
             <label for="workdays" class="required-field">Dias Úteis Semanais</label>
             <select id="workdays" name="workdays" required>
               <option value="">Selecione uma opção</option>
-              <option value="segunda_sexta">Segunda à Sexta</option>
-              <option value="segunda_sabado">Segunda à Sábado</option>
-              <option value="todos_dias">Todos os Dias</option>
-              <option value="fins_semana">Fins de Semana</option>
-              <option value="flexivel">Flexível</option>
+              <option value="Segunda à Sexta">Segunda à Sexta</option>
+              <option value="Segunda à Sábado">Segunda à Sábado</option>
+              <option value="Todos os Dias">Todos os Dias</option>
+              <option value="Fins de Semana">Fins de Semana</option>
+              <option value="Flexível">Flexível</option>
             </select>
           </div>
         </div>
@@ -810,6 +888,12 @@
           <textarea id="job_description" name="job_description" placeholder="Descreva as responsabilidades, atividades e objetivos da vaga..." required></textarea>
           <p class="small-text">Seja específico sobre as principais responsabilidades, requisitos e o que faz essa vaga única.</p>
         </div>
+
+        <div class="form-group">
+          <label for="job_requirements">Requisitos</label>
+          <textarea id="job_requirements" name="requisitos" placeholder="Liste os requisitos necessários para a vaga..."></textarea>
+          <p class="small-text">Inclua habilidades técnicas, experiência necessária, certificações, etc.</p>
+        </div>
       </div>
       
       <div class="button-group">
@@ -838,195 +922,120 @@
 
   <script>
     document.addEventListener('DOMContentLoaded', function() {
-      // Progress indicators functionality
-      const formSections = document.querySelectorAll('.form-section');
-      const progressSteps = document.querySelectorAll('.progress-step');
-      
-      formSections.forEach((section, index) => {
-        // Add click event to each section title to focus fields in that section
-        const sectionTitle = section.querySelector('.section-title');
-        sectionTitle.addEventListener('click', () => {
-          // Find first input/select in this section and focus it
-          const firstInput = section.querySelector('input, select, textarea');
-          if (firstInput) firstInput.focus();
-          
-          // Update active step
-          updateActiveStep(index);
-        });
+        const form = document.getElementById('job-form');
+        const progressSteps = document.querySelectorAll('.progress-step');
+        const progressBar = document.querySelector('.progress-indicator');
         
-        // Add event listeners for inputs in this section
-        const inputs = section.querySelectorAll('input, select, textarea');
-        inputs.forEach(input => {
-          input.addEventListener('focus', () => {
-            updateActiveStep(index);
-          });
-        });
-      });
-      
-      function updateActiveStep(activeIndex) {
-        progressSteps.forEach((step, i) => {
-          if (i === activeIndex) {
-            step.classList.add('active');
-          } else {
-            step.classList.remove('active');
-          }
-          
-          // Mark previous steps as completed
-          if (i < activeIndex) {
-            step.classList.add('completed');
-          } else {
-            step.classList.remove('completed');
-          }
-        });
-      }
-      
-      // Form validation
-      const form = document.getElementById('job-form');
-      const submitButton = document.getElementById('submit-button');
-      const cancelButton = document.getElementById('cancel-button');
-      const toast = document.getElementById('toast');
-      
-      // Validate salary range
-      const salaryMin = document.getElementById('salary_min');
-      const salaryMax = document.getElementById('salary_max');
-      
-      [salaryMin, salaryMax].forEach(input => {
-        input.addEventListener('change', validateSalaryRange);
-      });
-      
-      function validateSalaryRange() {
-        if (parseInt(salaryMin.value) > parseInt(salaryMax.value) && salaryMax.value !== '') {
-          salaryMax.setCustomValidity('O salário máximo deve ser maior que o salário mínimo');
-          salaryMax.reportValidity();
-        } else {
-          salaryMax.setCustomValidity('');
-        }
-      }
-      
-      // Validate work hours
-      const weeklyHoursMin = document.getElementById('weekly_hours_min');
-      const weeklyHoursMax = document.getElementById('weekly_hours_max');
-      const dailyHoursMin = document.getElementById('daily_hours_min');
-      const dailyHoursMax = document.getElementById('daily_hours_max');
-      
-      [weeklyHoursMin, weeklyHoursMax].forEach(input => {
-        input.addEventListener('change', validateWeeklyHours);
-      });
-      
-      [dailyHoursMin, dailyHoursMax].forEach(input => {
-        input.addEventListener('change', validateDailyHours);
-      });
-      
-      function validateWeeklyHours() {
-        if (parseInt(weeklyHoursMin.value) > parseInt(weeklyHoursMax.value) && weeklyHoursMax.value !== '') {
-          weeklyHoursMax.setCustomValidity('As horas máximas semanais devem ser maiores que as horas mínimas');
-          weeklyHoursMax.reportValidity();
-        } else {
-          weeklyHoursMax.setCustomValidity('');
-        }
-      }
-      
-      function validateDailyHours() {
-        if (parseInt(dailyHoursMin.value) > parseInt(dailyHoursMax.value) && dailyHoursMax.value !== '') {
-          dailyHoursMax.setCustomValidity('As horas máximas diárias devem ser maiores que as horas mínimas');
-          dailyHoursMax.reportValidity();
-        } else {
-          dailyHoursMax.setCustomValidity('');
-        }
-      }
-      
-      // Form submission
-      form.addEventListener('submit', function(event) {
-        // Remover a prevenção padrão do formulário
-        // e.preventDefault(); -- Remover ou comentar esta linha
-        
-        // Check if form is valid
-        if (form.checkValidity()) {
-          // Simulate form submission
-          submitButton.disabled = true;
-          submitButton.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;" class="spinner">
-              <circle cx="12" cy="12" r="10"></circle>
-              <path d="M12 6v6l4 2"></path>
-            </svg>
-            Publicando...
-          `;
-          
-          // Simulate API call with timeout
-          setTimeout(() => {
-            // Show success toast
-            toast.classList.add('show');
+        // Function to check if a section is complete
+        function isSectionComplete(section) {
+            const requiredInputs = section.querySelectorAll('input[required], select[required], textarea[required]');
+            let isComplete = true;
             
-            // Reset button state
-            submitButton.disabled = false;
-            submitButton.innerHTML = `
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="17 8 12 3 7 8"></polyline>
-                <line x1="12" y1="3" x2="12" y2="15"></line>
-              </svg>
-              Publicar Vaga
-            `;
-            
-            // Hide toast after 3 seconds
-            setTimeout(() => {
-              toast.classList.remove('show');
-              // In a real application, you'd redirect or clear the form here
-              // window.location.href = 'painel_empresa.php';
-            }, 3000);
-          }, 1500);
-        } else {
-          // Find first invalid field and focus it
-          const invalidFields = form.querySelectorAll(':invalid');
-          if (invalidFields.length > 0) {
-            invalidFields[0].focus();
-            
-            // Find which section contains the invalid field
-            formSections.forEach((section, index) => {
-              if (section.contains(invalidFields[0])) {
-                updateActiveStep(index);
-              }
+            requiredInputs.forEach(input => {
+                if (!input.value.trim()) {
+                    isComplete = false;
+                }
             });
-          }
+            
+            return isComplete;
         }
-      });
-      
-      // Cancel button
-      cancelButton.addEventListener('click', function() {
-        if (confirm('Tem certeza que deseja cancelar? Todas as informações inseridas serão perdidas.')) {
-          window.location.href = 'painel_empresa.php';
+        
+        // Function to update progress
+        function updateProgress() {
+            const sections = document.querySelectorAll('.form-section');
+            let completedSections = 0;
+            
+            sections.forEach((section, index) => {
+                if (isSectionComplete(section)) {
+                    completedSections++;
+                    progressSteps[index].classList.add('completed');
+                    if (index < sections.length - 1) {
+                        progressSteps[index + 1].classList.add('active');
+                    }
+                } else {
+                    progressSteps[index].classList.remove('completed');
+                    if (index < sections.length - 1) {
+                        progressSteps[index + 1].classList.remove('active');
+                    }
+                }
+            });
+            
+            // Update progress bar width
+            const progressPercentage = (completedSections / sections.length) * 100;
+            progressBar.style.setProperty('--progress-width', `${progressPercentage}%`);
         }
-      });
-      
-      // Add error highlighting on blur if empty
-      const requiredInputs = document.querySelectorAll('input[required], select[required], textarea[required]');
-      requiredInputs.forEach(input => {
-        input.addEventListener('blur', function() {
-          if (!this.value) {
-            this.classList.add('error');
-          } else {
-            this.classList.remove('error');
-          }
+        
+        // Add input event listeners to all form inputs
+        const formInputs = form.querySelectorAll('input, select, textarea');
+        formInputs.forEach(input => {
+            input.addEventListener('input', updateProgress);
+            input.addEventListener('change', updateProgress);
         });
-      });
-      
-      // Add custom styles for the spinner animation
-      const style = document.createElement('style');
-      style.textContent = `
-        .spinner {
-          animation: spin 1s linear infinite;
-        }
         
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
+        // Initial progress check
+        updateProgress();
         
-        .error {
-          border-color: #e74c3c !important;
-        }
-      `;
-      document.head.appendChild(style);
+        // Form submission code
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const submitButton = document.getElementById('submit-button');
+            submitButton.disabled = true;
+            submitButton.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;" class="spinner">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M12 6v6l4 2"></path>
+                </svg>
+                Publicando...
+            `;
+
+            const formData = new FormData(form);
+
+            fetch('save_job.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                const toast = document.getElementById('toast');
+                const toastMessage = document.getElementById('toast-message');
+                
+                if (data.success) {
+                    toast.classList.add('show');
+                    toastMessage.textContent = data.message;
+                    
+                    setTimeout(() => {
+                        window.location.href = 'painel_empresa.php';
+                    }, 2000);
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                const toast = document.getElementById('toast');
+                const toastMessage = document.getElementById('toast-message');
+                toast.style.backgroundColor = '#e74c3c';
+                toastMessage.textContent = 'Erro ao cadastrar vaga: ' + error.message;
+                toast.classList.add('show');
+            })
+            .finally(() => {
+                submitButton.disabled = false;
+                submitButton.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    Publicar Vaga
+                `;
+                
+                setTimeout(() => {
+                    const toast = document.getElementById('toast');
+                    toast.classList.remove('show');
+                    toast.style.backgroundColor = 'var(--primary)';
+                }, 3000);
+            });
+        });
     });
   </script>
 </body>

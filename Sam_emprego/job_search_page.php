@@ -165,15 +165,7 @@ try {
             padding: 0 20px;
         }
 
-        .search-container {
-            max-width: 1200px;
-            margin: 20px auto;
-            background-color: var(white);
-            border-radius: 15px;
-            overflow: hidden;
-            color: white;
-            transition: all 0.3s ease;
-        }
+        
 
         .search-container.collapsed {
             max-height: 80px;
@@ -185,7 +177,6 @@ try {
             display: flex;
             gap: 10px;
             background-color: white;
-            border-radius: 15px;
             padding: 15px;
             box-shadow: var(--box-shadow);
         }
@@ -282,62 +273,49 @@ try {
             <div class="filter-options" id="filter-options">
                 <div class="filter-row">
                     <div class="filter-label">Tipo de Trabalho:</div>
-                    <div class="filter-options-group">
-                        <div class="filter-option active">Todos</div>
-                        <div class="filter-option">Presencial</div>
-                        <div class="filter-option">Remoto</div>
-                    </div>
-                </div>
-                
-                <div class="filter-row">
-                    <div class="filter-label">Local de Trabalho:</div>
-                    <div class="filter-options-group">
-                        <select class="dropdown-select">
-                            <option>País</option>
-                        </select>
-                        <select class="dropdown-select">
-                            <option>Cidade*</option>
-                        </select>
-                    </div>
-                </div>
-                
-                <div class="filter-row">
-                    <div class="filter-label">Nível de Ensino Mínimo:</div>
-                    <div class="filter-options-group">
-                        <div class="filter-option">Todos</div>
-                        <div class="filter-option">Em andamento</div>
-                        <div class="filter-option active">Ensino médio</div>
-                        <div class="filter-option">Ensino superior</div>
-                    </div>
-                </div>
-                
-                <div class="filter-row">
-                    <div class="filter-label">Área de Trabalho:</div>
-                    <div class="filter-options-group">
-                        <div class="filter-option">Todos</div>
-                        <div class="filter-option">Administrativo</div>
-                        <div class="filter-option">Comercial</div>
-                        <div class="filter-option">Educação</div>
-                        <div class="filter-option">Engenharia</div>
-                        <div class="filter-option">Financeira</div>
-                        <div class="filter-option">Industrial</div>
-                        <div class="filter-option active">Marketing</div>
-                        <div class="filter-option">Logística</div>
-                        <div class="filter-option">mais</div>
+                    <div class="filter-options-group" id="tipoTrabalho">
+                        <div class="filter-option active" data-value="todos">Todos</div>
+                        <div class="filter-option" data-value="remoto">Remoto</div>
+                        <div class="filter-option" data-value="hibrido">Híbrido</div>
+                        <div class="filter-option" data-value="presencial">Presencial</div>
                     </div>
                 </div>
                 
                 <div class="filter-row">
                     <div class="filter-label">Tipo de Contrato:</div>
-                    <div class="filter-options-group">
-                        <div class="filter-option active">Todos</div>
-                        <div class="filter-option">Efetivo</div>
-                        <div class="filter-option">Temporário</div>
-                        <div class="filter-option">Prestação de serviços</div>
+                    <div class="filter-options-group" id="tipoContrato">
+                        <div class="filter-option active" data-value="todos">Todos</div>
+                        <div class="filter-option" data-value="efetivo">Efetivo</div>
+                        <div class="filter-option" data-value="meio_periodo">Meio Período</div>
+                        <div class="filter-option" data-value="temporario">Temporário</div>
+                        <div class="filter-option" data-value="freelancer">Freelancer</div>
+                        <div class="filter-option" data-value="estagio">Estágio</div>
                     </div>
                 </div>
                 
-                <button class="apply-button">Aplicar</button>
+                <div class="filter-row">
+                    <div class="filter-label">Faixa Salarial:</div>
+                    <div class="filter-options-group" id="faixaSalarial">
+                        <div class="filter-option active" data-value="todos">Todos</div>
+                        <div class="filter-option" data-value="0-50000">Até 50.000 AOA</div>
+                        <div class="filter-option" data-value="50000-100000">50.000 - 100.000 AOA</div>
+                        <div class="filter-option" data-value="100000-200000">100.000 - 200.000 AOA</div>
+                        <div class="filter-option" data-value="200000+">Acima de 200.000 AOA</div>
+                    </div>
+                </div>
+                
+                <div class="filter-row">
+                    <div class="filter-label">Idioma:</div>
+                    <div class="filter-options-group" id="idioma">
+                        <div class="filter-option active" data-value="todos">Todos</div>
+                        <div class="filter-option" data-value="portugues">Português</div>
+                        <div class="filter-option" data-value="ingles">Inglês</div>
+                        <div class="filter-option" data-value="frances">Francês</div>
+                        <div class="filter-option" data-value="espanhol">Espanhol</div>
+                    </div>
+                </div>
+                
+                <button class="apply-button" onclick="applyFilters()">Aplicar Filtros</button>
             </div>
         </div>
         
@@ -349,20 +327,19 @@ try {
                         <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                     </svg>
                 </div>
-                <input type="text" placeholder="Pesquisar vagas...">
+                <input type="text" id="searchInput" placeholder="Pesquisar vagas..." onkeyup="searchJobs()">
             </div>
-            <button class="search-button">Procurar</button>
+            <button class="search-button" onclick="searchJobs()">Procurar</button>
         </div>
 
-        <div class="job-listings">
+        <div class="job-listings" id="jobListings">
             <?php
             try {
-                // Buscar todas as vagas ativas
+                // Buscar todas as vagas
                 $stmt = $pdo->prepare("
                     SELECT v.*, e.nome as empresa_nome, e.logo as empresa_logo 
                     FROM vagas v 
-                    JOIN empresas_recrutamento e ON v.empresa_id = e.id 
-                    WHERE v.status = 'Aberta' 
+                    LEFT JOIN empresas_recrutamento e ON v.empresa_id = e.id 
                     ORDER BY v.data_publicacao DESC
                 ");
                 $stmt->execute();
@@ -381,7 +358,12 @@ try {
                             $salario = 'Até ' . number_format($vaga['salario_max'], 2, ',', '.') . ' AOA / Mês';
                         }
             ?>
-                <div class="job-card">
+                <div class="job-card" 
+                     data-idioma="<?php echo htmlspecialchars($vaga['idioma'] ?? ''); ?>"
+                     data-localizacao="<?php echo htmlspecialchars($vaga['localizacao'] ?? ''); ?>"
+                     data-tipo-contrato="<?php echo htmlspecialchars($vaga['tipo_contrato'] ?? ''); ?>"
+                     data-salario-min="<?php echo htmlspecialchars($vaga['salario_min'] ?? ''); ?>"
+                     data-salario-max="<?php echo htmlspecialchars($vaga['salario_max'] ?? ''); ?>">
                     <div class="job-header"><?php echo htmlspecialchars($vaga['empresa_nome']); ?></div>
                     <div class="job-content">
                         <div class="job-logo">
@@ -435,18 +417,11 @@ try {
                                         ?>
                                     </div>
                                 <?php endif; ?>
-
-                                <?php if ($vaga['idioma']): ?>
-                                <div class="job-language">
-                                    <span class="icon icon-language"></span>
-                                    <?php echo htmlspecialchars($vaga['idioma']); ?>
-                                </div>
-                                <?php endif; ?>
                             </div>
                         </div>
                         <div class="job-actions">
                             <div class="job-status status-open">A contratar</div>
-                            <a href="detalhes_vaga.php" class="job-view">Visualizar detalhes</a>
+                            <a href="job_view_page.php?id=<?php echo $vaga['id']; ?>" class="job-view">Visualizar detalhes</a>
                         </div>
                     </div>
                 </div>
@@ -491,6 +466,155 @@ try {
             
             // Adicionar evento de clique ao cabeçalho do filtro
             filterToggle.addEventListener('click', toggleDropdown);
+        });
+
+        // Função de pesquisa
+        function searchJobs() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const jobCards = document.querySelectorAll('.job-card');
+            let foundJobs = 0;
+
+            jobCards.forEach(card => {
+                const title = card.querySelector('.job-title').textContent.toLowerCase();
+                const company = card.querySelector('.job-company').textContent.toLowerCase();
+                const category = card.querySelector('.job-category')?.textContent.toLowerCase() || '';
+                const location = card.querySelector('.job-location')?.textContent.toLowerCase() || '';
+                
+                if (title.includes(searchTerm) || 
+                    company.includes(searchTerm) || 
+                    category.includes(searchTerm) || 
+                    location.includes(searchTerm) || 
+                    searchTerm === '') {
+                    card.style.display = 'block';
+                    foundJobs++;
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+
+            // Mostrar mensagem se nenhuma vaga for encontrada
+            const jobListings = document.getElementById('jobListings');
+            const existingNoResults = jobListings.querySelector('.no-results');
+            
+            if (foundJobs === 0) {
+                if (!existingNoResults) {
+                    const noResultsDiv = document.createElement('div');
+                    noResultsDiv.className = 'no-results';
+                    noResultsDiv.innerHTML = 'Nenhuma vaga encontrada para "' + document.getElementById('searchInput').value + '"';
+                    noResultsDiv.style.cssText = 'text-align: center; padding: 20px; color: #666; font-style: italic;';
+                    jobListings.appendChild(noResultsDiv);
+                }
+            } else {
+                if (existingNoResults) {
+                    existingNoResults.remove();
+                }
+            }
+        }
+
+        // Pesquisar ao pressionar Enter
+        document.getElementById('searchInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                searchJobs();
+            }
+        });
+        // Função para aplicar os filtros
+        function applyFilters() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const jobCards = document.querySelectorAll('.job-card');
+            let foundJobs = 0;
+
+            // Obter valores dos filtros
+            const tipoTrabalho = document.querySelector('#tipoTrabalho .filter-option.active').dataset.value;
+            const tipoContrato = document.querySelector('#tipoContrato .filter-option.active').dataset.value;
+            const faixaSalarial = document.querySelector('#faixaSalarial .filter-option.active').dataset.value;
+            const idioma = document.querySelector('#idioma .filter-option.active').dataset.value;
+
+            jobCards.forEach(card => {
+                const title = card.querySelector('.job-title').textContent.toLowerCase();
+                const company = card.querySelector('.job-company').textContent.toLowerCase();
+                const location = card.querySelector('.job-location')?.textContent.toLowerCase() || '';
+                const contract = card.querySelector('.job-type')?.textContent.toLowerCase() || '';
+                const salary = card.querySelector('.job-salary')?.textContent || '';
+                
+                // Verificar se o card corresponde aos filtros
+                const matchesSearch = title.includes(searchTerm) || 
+                                    company.includes(searchTerm) || 
+                                    searchTerm === '';
+                
+                const matchesTipoTrabalho = tipoTrabalho === 'todos' || 
+                                          card.dataset.localizacao?.includes(tipoTrabalho);
+                
+                const matchesTipoContrato = tipoContrato === 'todos' || 
+                                          card.dataset.tipoContrato?.includes(tipoContrato);
+                
+                const matchesFaixaSalarial = faixaSalarial === 'todos' || 
+                                           checkSalaryRange(card.dataset.salarioMin, card.dataset.salarioMax, faixaSalarial);
+                
+                const matchesIdioma = idioma === 'todos' || 
+                                    card.dataset.idioma?.includes(idioma);
+
+                if (matchesSearch && matchesTipoTrabalho && matchesTipoContrato && 
+                    matchesFaixaSalarial && matchesIdioma) {
+                    card.style.display = 'block';
+                    foundJobs++;
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+
+            // Mostrar mensagem se nenhuma vaga for encontrada
+            const jobListings = document.getElementById('jobListings');
+            const existingNoResults = jobListings.querySelector('.no-results');
+            
+            if (foundJobs === 0) {
+                if (!existingNoResults) {
+                    const noResultsDiv = document.createElement('div');
+                    noResultsDiv.className = 'no-results';
+                    noResultsDiv.innerHTML = 'Nenhuma vaga encontrada com os filtros selecionados';
+                    noResultsDiv.style.cssText = 'text-align: center; padding: 20px; color: #666; font-style: italic;';
+                    jobListings.appendChild(noResultsDiv);
+                }
+            } else {
+                if (existingNoResults) {
+                    existingNoResults.remove();
+                }
+            }
+        }
+
+        // Função para verificar a faixa salarial
+        function checkSalaryRange(salarioMin, salarioMax, range) {
+            if (range === 'todos') return true;
+            if (!salarioMin && !salarioMax) return false;
+            
+            const min = salarioMin ? parseFloat(salarioMin) : 0;
+            const max = salarioMax ? parseFloat(salarioMax) : Infinity;
+            
+            switch(range) {
+                case '0-50000':
+                    return max <= 50000;
+                case '50000-100000':
+                    return min >= 50000 && max <= 100000;
+                case '100000-200000':
+                    return min >= 100000 && max <= 200000;
+                case '200000+':
+                    return min >= 200000;
+                default:
+                    return true;
+            }
+        }
+
+        // Adicionar eventos de clique aos filtros
+        document.querySelectorAll('.filter-options-group').forEach(group => {
+            group.querySelectorAll('.filter-option').forEach(option => {
+                option.addEventListener('click', function() {
+                    // Remover classe active de todos os irmãos
+                    this.parentElement.querySelectorAll('.filter-option').forEach(opt => {
+                        opt.classList.remove('active');
+                    });
+                    // Adicionar classe active ao clicado
+                    this.classList.add('active');
+                });
+            });
         });
     </script>
     <script src="../js/dropdown.js"></script>

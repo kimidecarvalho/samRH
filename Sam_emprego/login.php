@@ -1,4 +1,6 @@
 <?php
+
+require 'vendor/autoload.php';
 session_start();
 
 // Verificar se já existe uma mensagem de sucesso

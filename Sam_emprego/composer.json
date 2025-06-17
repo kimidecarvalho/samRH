@@ -1,0 +1,13 @@
+{
+    "name": "samrh/sam_emprego",
+    "description": "Project for SAM - Sistema de Acompanhamento de Metas",
+    "type": "project",
+    "autoload": {
+        "psr-4": {
+            "": "./"
+        }
+    },
+    "require": {
+        "php": ">=7.4.0"
+    }
+}

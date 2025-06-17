@@ -18,15 +18,97 @@
         $stmt->execute([$_SESSION['empresa_id']]);
         $vagas = $stmt->fetchAll();
         
-        // Contar candidaturas totais (exemplo)
-        $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM candidaturas WHERE empresa_id = ?");
+        // Contar candidaturas totais
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) as total 
+            FROM candidaturas c 
+            JOIN vagas v ON c.vaga_id = v.id 
+            WHERE v.empresa_id = ?
+        ");
         $stmt->execute([$_SESSION['empresa_id']]);
         $totalCandidaturas = $stmt->fetch()['total'] ?? 0;
         
-        // Contar candidaturas novas dos últimos 7 dias (exemplo)
-        $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM candidaturas WHERE empresa_id = ? AND data_candidatura >= DATE_SUB(NOW(), INTERVAL 7 DAY)");
+        // Contar candidaturas novas dos últimos 7 dias
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) as total 
+            FROM candidaturas c 
+            JOIN vagas v ON c.vaga_id = v.id 
+            WHERE v.empresa_id = ? 
+            AND c.data_candidatura >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        ");
         $stmt->execute([$_SESSION['empresa_id']]);
         $novasCandidaturas = $stmt->fetch()['total'] ?? 0;
+
+        // Calcular crescimento de vagas no mês atual
+        $stmt = $pdo->prepare("
+            SELECT 
+                COUNT(*) as total_atual,
+                (SELECT COUNT(*) FROM vagas 
+                 WHERE empresa_id = ? 
+                 AND data_publicacao < DATE_FORMAT(NOW(), '%Y-%m-01')
+                ) as total_anterior
+            FROM vagas 
+            WHERE empresa_id = ? 
+            AND data_publicacao >= DATE_FORMAT(NOW(), '%Y-%m-01')
+        ");
+        $stmt->execute([$_SESSION['empresa_id'], $_SESSION['empresa_id']]);
+        $crescimentoVagas = $stmt->fetch();
+        $percentualCrescimentoVagas = $crescimentoVagas['total_anterior'] > 0 
+            ? round((($crescimentoVagas['total_atual'] - $crescimentoVagas['total_anterior']) / $crescimentoVagas['total_anterior']) * 100) 
+            : 0;
+
+        // Calcular crescimento de candidaturas na semana atual
+        $stmt = $pdo->prepare("
+            SELECT 
+                COUNT(*) as total_atual,
+                (SELECT COUNT(*) 
+                 FROM candidaturas c 
+                 JOIN vagas v ON c.vaga_id = v.id 
+                 WHERE v.empresa_id = ? 
+                 AND c.data_candidatura < DATE_SUB(NOW(), INTERVAL 7 DAY)
+                ) as total_anterior
+            FROM candidaturas c 
+            JOIN vagas v ON c.vaga_id = v.id 
+            WHERE v.empresa_id = ? 
+            AND c.data_candidatura >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        ");
+        $stmt->execute([$_SESSION['empresa_id'], $_SESSION['empresa_id']]);
+        $crescimentoCandidaturas = $stmt->fetch();
+        $percentualCrescimentoCandidaturas = $crescimentoCandidaturas['total_anterior'] > 0 
+            ? round((($crescimentoCandidaturas['total_atual'] - $crescimentoCandidaturas['total_anterior']) / $crescimentoCandidaturas['total_anterior']) * 100) 
+            : 0;
+
+        // Buscar atividades recentes
+        $stmt = $pdo->prepare("
+            SELECT 
+                c.*,
+                v.titulo as vaga_titulo,
+                cd.nome as candidato_nome,
+                TIMESTAMPDIFF(HOUR, c.data_candidatura, NOW()) as horas_antes
+            FROM candidaturas c
+            JOIN vagas v ON c.vaga_id = v.id
+            JOIN candidatos cd ON c.candidato_id = cd.id
+            WHERE v.empresa_id = ?
+            ORDER BY c.data_candidatura DESC
+            LIMIT 3
+        ");
+        $stmt->execute([$_SESSION['empresa_id']]);
+        $atividadesRecentes = $stmt->fetchAll();
+
+        // Buscar número de candidatos por vaga
+        $stmt = $pdo->prepare("
+            SELECT v.id, COUNT(c.id) as total_candidatos
+            FROM vagas v
+            LEFT JOIN candidaturas c ON v.id = c.vaga_id
+            WHERE v.empresa_id = ?
+            GROUP BY v.id
+        ");
+        $stmt->execute([$_SESSION['empresa_id']]);
+        $candidatosPorVaga = [];
+        while ($row = $stmt->fetch()) {
+            $candidatosPorVaga[$row['id']] = $row['total_candidatos'];
+        }
+
     } catch (PDOException $e) {
         $erro = "Erro ao carregar dados: " . $e->getMessage();
     }
@@ -37,6 +119,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Painel da Empresa</title>
+    <link rel="stylesheet" href="../all.css/emprego.css/emp_vagas.css">
     <link rel="stylesheet" href="../all.css/emprego.css/emp_search.css">
     <link rel="stylesheet" href="../all.css/emprego.css/emp_header.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -526,6 +609,7 @@
             color: var(--lighter-text);
             font-size: 0.85rem;
         }
+
         
         .footer p {
             margin: 0;
@@ -570,6 +654,50 @@
                 font-size: 0.9rem;
             }
         }
+
+        .user-section {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .user-dropdown {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 50px;
+            transition: background-color 0.3s;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f5f5f5;
+        }
+
+        .user-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .settings-icon {
+            display: flex;
+            align-items: center;
+
+        }
+
+        .settings-icon a {
+            display: flex;
+            align-items: center;
+        }
     </style>
 </head>
 <body>
@@ -581,15 +709,15 @@
             <div class="nav-container">
                 <nav class="nav-menu">
                     <a href="job_search_page_emp.php">Vagas</a>
-                    <a href="curriculums.php">Minhas vagas</a>
-                    <a href="minhas_candidaturas.php">Candidaturas</a>
-                    <a href="painel_candidato.php" class="active">Perfil</a>
+                    <a href="emp_vagas.php">Minhas vagas</a>
+                    <a href="empresas_candidaturas.php">Candidaturas</a>
+                    <a href="painel_empresa.php" class="active">Perfil</a>
                 </nav>
             </div>
             <div class="user-section">
                 <div class="user-dropdown" id="userDropdownToggle">
                     <div class="user-avatar">
-                        <img src="../icones/icons-sam-19.svg" alt="" width="40">
+                        <img src="<?php echo !empty($empresa['logo']) ? htmlspecialchars($empresa['logo']) : 'sam2-05.png'; ?>" alt="Logo da Empresa" width="40">
                     </div>
                         <span><?php echo htmlspecialchars($empresa['nome'] ?? $_SESSION['empresa_nome']); ?></span>
                     <i class="fas fa-chevron-down dropdown-arrow"></i>
@@ -612,11 +740,14 @@
                     </div>
                 </div>
                 
-                <div class="settings-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3EB489" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <div class="settings-icon">
+                    <a href="configuracoes_empresa.php">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3EB489" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" >
                         <circle cx="12" cy="12" r="3"></circle>
                         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                     </svg>
+                    </a>
+
                 </div>
             </div>
         </div>
@@ -634,16 +765,18 @@
             <div class="stat-card">
                 <h3>Total de Vagas</h3>
                 <p class="stat-number"><?php echo count($vagas); ?></p>
-                <span class="stat-trend up">
-                    <i class="fas fa-arrow-up"></i> 12% este mês
+                <span class="stat-trend <?php echo $percentualCrescimentoVagas >= 0 ? 'up' : 'down'; ?>">
+                    <i class="fas fa-arrow-<?php echo $percentualCrescimentoVagas >= 0 ? 'up' : 'down'; ?>"></i>
+                    <?php echo abs($percentualCrescimentoVagas); ?>% este mês
                 </span>
             </div>
             
             <div class="stat-card">
                 <h3>Candidaturas Recebidas</h3>
                 <p class="stat-number"><?php echo $totalCandidaturas ?? 0; ?></p>
-                <span class="stat-trend up">
-                    <i class="fas fa-arrow-up"></i> 8% esta semana
+                <span class="stat-trend <?php echo $percentualCrescimentoCandidaturas >= 0 ? 'up' : 'down'; ?>">
+                    <i class="fas fa-arrow-<?php echo $percentualCrescimentoCandidaturas >= 0 ? 'up' : 'down'; ?>"></i>
+                    <?php echo abs($percentualCrescimentoCandidaturas); ?>% esta semana
                 </span>
             </div>
             
@@ -683,12 +816,12 @@
                                 
                                 <div class="vaga-meta-item">
                                     <i class="fas fa-user-friends"></i>
-                                    <?php echo rand(5, 30); ?> candidatos
+                                    <?php echo $candidatosPorVaga[$vaga['id']] ?? 0; ?> candidatos
                                 </div>
                             </div>
                             
                             <div class="vaga-actions">
-                                <a href="visualizar_vaga.php?id=<?php echo $vaga['id']; ?>" class="btn-small btn-view">
+                                <a href="job_view_page.php?id=<?php echo $vaga['id']; ?>" class="btn-small btn-view">
                                     <i class="fas fa-eye"></i> Ver
                                 </a>
                                 <a href="editar_vaga.php?id=<?php echo $vaga['id']; ?>" class="btn-small btn-edit">
@@ -718,34 +851,26 @@
             </div>
             
             <ul class="activity-list">
-                <?php if (isset($vagas) && count($vagas) > 0): ?>
-                    <li class="activity-item">
-                        <div class="activity-icon icon-candidate">
-                            <i class="fas fa-user"></i>
-                        </div>
-                        <div class="activity-content">
-                            <p><span class="highlight">João Silva</span> candidatou-se à vaga de <?php echo htmlspecialchars($vagas[0]['titulo']); ?></p>
-                            <div class="activity-time">há 2 horas</div>
-                        </div>
-                    </li>
-                    <li class="activity-item">
-                        <div class="activity-icon icon-job">
-                            <i class="fas fa-briefcase"></i>
-                        </div>
-                        <div class="activity-content">
-                            <p>Você publicou uma nova vaga: <span class="highlight"><?php echo htmlspecialchars($vagas[0]['titulo']); ?></span></p>
-                            <div class="activity-time">há 1 dia</div>
-                        </div>
-                    </li>
-                    <li class="activity-item">
-                        <div class="activity-icon icon-candidate">
-                            <i class="fas fa-user"></i>
-                        </div>
-                        <div class="activity-content">
-                            <p><span class="highlight">Maria Oliveira</span> candidatou-se à vaga de <?php echo htmlspecialchars($vagas[0]['titulo']); ?></p>
-                            <div class="activity-time">há 2 dias</div>
-                        </div>
-                    </li>
+                <?php if (isset($atividadesRecentes) && !empty($atividadesRecentes)): ?>
+                    <?php foreach($atividadesRecentes as $atividade): ?>
+                        <li class="activity-item">
+                            <div class="activity-icon icon-candidate">
+                                <i class="fas fa-user"></i>
+                            </div>
+                            <div class="activity-content">
+                                <p><span class="highlight"><?php echo htmlspecialchars($atividade['candidato_nome']); ?></span> candidatou-se à vaga de <?php echo htmlspecialchars($atividade['vaga_titulo']); ?></p>
+                                <div class="activity-time">
+                                    <?php 
+                                    if ($atividade['horas_antes'] < 24) {
+                                        echo $atividade['horas_antes'] . ' horas atrás';
+                                    } else {
+                                        echo floor($atividade['horas_antes'] / 24) . ' dias atrás';
+                                    }
+                                    ?>
+                                </div>
+                            </div>
+                        </li>
+                    <?php endforeach; ?>
                 <?php else: ?>
                     <li class="activity-item">
                         <div class="activity-icon icon-job">

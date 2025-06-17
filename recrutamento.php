@@ -6,6 +6,7 @@ if (session_status() == PHP_SESSION_NONE) {
 
 include 'protect.php'; // Protege a página para usuários autenticados
 include 'config.php'; // Conexão com o banco de dados
+include 'conexao.php'; // Inclui o arquivo de conexão com o banco de dados
 
 // Verifica se o usuário está logado e tem um ID válido
 if (!isset($_SESSION['id_adm'])) {
@@ -18,8 +19,143 @@ if (!isset($_SESSION['id_empresa'])) {
     echo "<script>alert('Você precisa criar uma empresa antes de acessar esta página.'); window.location.href='Registro_adm.php';</script>";
     exit;
 }
-?>
 
+// Get empresa_id from sam_emprego
+$stmt = $conn->prepare("SELECT id FROM sam_emprego.empresas_recrutamento WHERE email = (SELECT email_corp FROM sam.empresa WHERE id_empresa = ?)");
+$stmt->bind_param("i", $_SESSION['id_empresa']);
+$stmt->execute();
+$result = $stmt->get_result();
+$empresa_sam_emprego = $result->fetch_assoc();
+$empresa_id_emprego = $empresa_sam_emprego['id'];
+
+// 1. Count Active Jobs
+$stmt_vagas_ativas = $conn->prepare("
+    SELECT COUNT(*) AS total_vagas_ativas 
+    FROM sam_emprego.vagas 
+    WHERE empresa_id = ? AND status = 'Aberta'
+");
+$stmt_vagas_ativas->bind_param("i", $empresa_id_emprego);
+$stmt_vagas_ativas->execute();
+$vagas_ativas = $stmt_vagas_ativas->get_result()->fetch_assoc()['total_vagas_ativas'];
+
+// 2. Count Unique Candidates
+$stmt_candidatos = $conn->prepare("
+    SELECT COUNT(DISTINCT c.candidato_id) AS total_candidatos 
+    FROM sam_emprego.candidaturas c 
+    JOIN sam_emprego.vagas v ON c.vaga_id = v.id 
+    WHERE v.empresa_id = ?
+");
+$stmt_candidatos->bind_param("i", $empresa_id_emprego);
+$stmt_candidatos->execute();
+$total_candidatos = $stmt_candidatos->get_result()->fetch_assoc()['total_candidatos'];
+
+// 3. Count This Week's Interviews
+$stmt_entrevistas = $conn->prepare("
+    SELECT COUNT(*) AS total_entrevistas 
+    FROM sam_emprego.candidaturas c
+    JOIN sam_emprego.vagas v ON c.vaga_id = v.id
+    WHERE v.empresa_id = ? 
+    AND c.status = 'Entrevista' 
+    AND c.entrevista_data BETWEEN CURDATE() - INTERVAL WEEKDAY(CURDATE()) DAY 
+    AND CURDATE() + INTERVAL (6 - WEEKDAY(CURDATE())) DAY
+");
+$stmt_entrevistas->bind_param("i", $empresa_id_emprego);
+$stmt_entrevistas->execute();
+$entrevistas_esta_semana = $stmt_entrevistas->get_result()->fetch_assoc()['total_entrevistas'];
+
+// 4. Count This Month's Hires
+$stmt_contratacoes = $conn->prepare("
+    SELECT COUNT(*) AS total_contratacoes 
+    FROM sam_emprego.candidaturas c
+    JOIN sam_emprego.vagas v ON c.vaga_id = v.id
+    WHERE v.empresa_id = ? 
+    AND c.status = 'Aprovado' 
+    AND MONTH(c.data_candidatura) = MONTH(CURRENT_DATE())
+    AND YEAR(c.data_candidatura) = YEAR(CURRENT_DATE())
+");
+$stmt_contratacoes->bind_param("i", $empresa_id_emprego);
+$stmt_contratacoes->execute();
+$contratacoes_este_mes = $stmt_contratacoes->get_result()->fetch_assoc()['total_contratacoes'];
+
+// 5. Get Recent Jobs - Updated query with better sorting and limit
+$stmt_vagas_recentes = $conn->prepare("
+    SELECT 
+        v.*, 
+        COUNT(c.id) as total_candidaturas,
+        GROUP_CONCAT(DISTINCT LEFT(cand.nome, 1) ORDER BY c.id LIMIT 3) as candidatos_iniciais,
+        GROUP_CONCAT(DISTINCT cand.nome ORDER BY c.id LIMIT 3) as candidatos_nomes
+    FROM sam_emprego.vagas v
+    LEFT JOIN sam_emprego.candidaturas c ON v.id = c.vaga_id
+    LEFT JOIN sam_emprego.candidatos cand ON c.candidato_id = cand.id
+    WHERE v.empresa_id = ?
+    GROUP BY v.id
+    ORDER BY v.data_publicacao DESC, v.id DESC
+    LIMIT 5
+");
+$stmt_vagas_recentes->bind_param("i", $empresa_id_emprego);
+$stmt_vagas_recentes->execute();
+$vagas_recentes = $stmt_vagas_recentes->get_result();
+
+// Store results in array for multiple use
+$vagas_array = [];
+while ($vaga = $vagas_recentes->fetch_assoc()) {
+    $vagas_array[] = $vaga;
+}
+
+// 6. Get Recent Candidates
+$stmt_candidatos_recentes = $conn->prepare("
+    SELECT c.*, v.titulo as vaga_titulo, cand.nome as candidato_nome
+    FROM sam_emprego.candidaturas c
+    JOIN sam_emprego.vagas v ON c.vaga_id = v.id
+    JOIN sam_emprego.candidatos cand ON c.candidato_id = cand.id
+    WHERE v.empresa_id = ?
+    ORDER BY c.data_candidatura DESC
+    LIMIT 5
+");
+$stmt_candidatos_recentes->bind_param("i", $empresa_id_emprego);
+$stmt_candidatos_recentes->execute();
+$candidatos_recentes = $stmt_candidatos_recentes->get_result();
+
+// 7. Get Data for Charts
+$stmt_candidaturas_por_vaga = $conn->prepare("
+    SELECT v.titulo, COUNT(c.id) as total
+    FROM sam_emprego.vagas v
+    LEFT JOIN sam_emprego.candidaturas c ON v.id = c.vaga_id
+    WHERE v.empresa_id = ?
+    GROUP BY v.id
+    ORDER BY total DESC
+    LIMIT 5
+");
+$stmt_candidaturas_por_vaga->bind_param("i", $empresa_id_emprego);
+$stmt_candidaturas_por_vaga->execute();
+$dados_grafico_vagas = $stmt_candidaturas_por_vaga->get_result();
+
+$stmt_status_candidatos = $conn->prepare("
+    SELECT 
+        c.status,
+        COUNT(*) as total
+    FROM sam_emprego.candidaturas c
+    JOIN sam_emprego.vagas v ON c.vaga_id = v.id
+    WHERE v.empresa_id = ? 
+    AND c.status IN ('Em análise', 'Entrevista', 'Aprovado', 'Rejeitado')
+    GROUP BY c.status
+");
+$stmt_status_candidatos->bind_param("i", $empresa_id_emprego);
+$stmt_status_candidatos->execute();
+$result_status = $stmt_status_candidatos->get_result();
+
+$status_data = [
+    'Em análise' => 0,
+    'Entrevista' => 0,
+    'Aprovado' => 0,
+    'Rejeitado' => 0
+];
+
+while ($row = $result_status->fetch_assoc()) {
+    $status_data[$row['status']] = (int)$row['total'];
+}
+
+?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -414,112 +550,59 @@ if (!isset($_SESSION['id_empresa'])) {
         <div class="dashboard-cards">
             <div class="stat-card">
                 <i class="fas fa-briefcase icon"></i>
-                <div class="number">8</div>
+                <div class="number"><?php echo $vagas_ativas; ?></div>
                 <div class="label">Vagas Ativas</div>
             </div>
             <div class="stat-card">
                 <i class="fas fa-users icon"></i>
-                <div class="number">87</div>
+                <div class="number"><?php echo $total_candidatos; ?></div>
                 <div class="label">Candidatos</div>
             </div>
             <div class="stat-card">
                 <i class="fas fa-user-check icon"></i>
-                <div class="number">12</div>
+                <div class="number"><?php echo $entrevistas_esta_semana; ?></div>
                 <div class="label">Entrevistas Esta Semana</div>
             </div>
             <div class="stat-card">
                 <i class="fas fa-user-plus icon"></i>
-                <div class="number">5</div>
+                <div class="number"><?php echo $contratacoes_este_mes; ?></div>
                 <div class="label">Contratações Este Mês</div>
             </div>
         </div>
 
         <!-- Vagas em destaque -->
         <div class="job-card-container">
+            <?php foreach($vagas_array as $vaga): ?>
             <div class="job-card">
                 <div class="job-card-header">
                     <div>
-                        <div class="job-title">Desenvolvedor Front-end</div>
-                        <div class="job-department">Tecnologia da Informação</div>
+                        <div class="job-title"><?php echo htmlspecialchars($vaga['titulo']); ?></div>
+                        <div class="job-department"><?php echo htmlspecialchars($vaga['departamento']); ?></div>
                     </div>
-                    <span class="status status-active">Ativa</span>
+                    <span class="status status-<?php echo strtolower($vaga['status']); ?>"><?php echo htmlspecialchars($vaga['status']); ?></span>
                 </div>
                 <div class="job-meta">
                     <div class="job-meta-item">
-                        <i class="fas fa-map-marker-alt"></i> Lisboa
+                        <i class="fas fa-map-marker-alt"></i> <?php echo htmlspecialchars($vaga['localizacao']); ?>
                     </div>
                     <div class="job-meta-item">
-                        <i class="fas fa-clock"></i> Tempo Integral
+                        <i class="fas fa-clock"></i> <?php echo htmlspecialchars($vaga['tipo_contrato']); ?>
                     </div>
                 </div>
                 <div class="applicants-list">
-                    <div class="applicant-avatar">JS</div>
-                    <div class="applicant-avatar">MP</div>
-                    <div class="applicant-avatar">CS</div>
-                    <div class="applicant-avatar">+</div>
-                    <div class="more-applicants">24 candidatos</div>
+                    <?php 
+                    $candidatos_iniciais = explode(',', $vaga['candidatos_iniciais']);
+                    foreach ($candidatos_iniciais as $inicial): ?>
+                    <div class="applicant-avatar"><?php echo htmlspecialchars($inicial); ?></div>
+                    <?php endforeach; ?>
+                    <div class="more-applicants"><?php echo $vaga['total_candidaturas']; ?> candidatos</div>
                 </div>
                 <div class="job-actions">
-                    <span class="candidate-count">Criada em 15/05/2023</span>
+                    <span class="candidate-count">Criada em <?php echo date('d/m/Y', strtotime($vaga['data_publicacao'])); ?></span>
                     <button class="btn btn-primary btn-small">Ver Detalhes</button>
                 </div>
             </div>
-            
-            <div class="job-card">
-                <div class="job-card-header">
-                    <div>
-                        <div class="job-title">Analista de Marketing Digital</div>
-                        <div class="job-department">Marketing</div>
-                    </div>
-                    <span class="status status-active">Ativa</span>
-                </div>
-                <div class="job-meta">
-                    <div class="job-meta-item">
-                        <i class="fas fa-map-marker-alt"></i> Porto
-                    </div>
-                    <div class="job-meta-item">
-                        <i class="fas fa-clock"></i> Tempo Integral
-                    </div>
-                </div>
-                <div class="applicants-list">
-                    <div class="applicant-avatar">RL</div>
-                    <div class="applicant-avatar">AM</div>
-                    <div class="applicant-avatar">+</div>
-                    <div class="more-applicants">18 candidatos</div>
-                </div>
-                <div class="job-actions">
-                    <span class="candidate-count">Criada em 20/05/2023</span>
-                    <button class="btn btn-primary btn-small">Ver Detalhes</button>
-                </div>
-            </div>
-            
-            <div class="job-card">
-                <div class="job-card-header">
-                    <div>
-                        <div class="job-title">Gerente de Vendas</div>
-                        <div class="job-department">Vendas</div>
-                    </div>
-                    <span class="status status-active">Ativa</span>
-                </div>
-                <div class="job-meta">
-                    <div class="job-meta-item">
-                        <i class="fas fa-map-marker-alt"></i> Lisboa
-                    </div>
-                    <div class="job-meta-item">
-                        <i class="fas fa-clock"></i> Tempo Integral
-                    </div>
-                </div>
-                <div class="applicants-list">
-                    <div class="applicant-avatar">FS</div>
-                    <div class="applicant-avatar">JL</div>
-                    <div class="applicant-avatar">+</div>
-                    <div class="more-applicants">12 candidatos</div>
-                </div>
-                <div class="job-actions">
-                    <span class="candidate-count">Criada em 01/06/2023</span>
-                    <button class="btn btn-primary btn-small">Ver Detalhes</button>
-                </div>
-            </div>
+            <?php endforeach; ?>
         </div>
 
         <!-- Gráficos -->
@@ -552,46 +635,16 @@ if (!isset($_SESSION['id_empresa'])) {
                     </tr>
                 </thead>
                 <tbody>
+                    <?php foreach($vagas_array as $vaga): ?>
                     <tr>
-                        <td>Desenvolvedor Front-end</td>
-                        <td>Tecnologia da Informação</td>
-                        <td>Lisboa</td>
-                        <td>15/05/2023</td>
-                        <td>24</td>
-                        <td><span class="status status-active">Ativa</span></td>
+                        <td><?php echo htmlspecialchars($vaga['titulo']); ?></td>
+                        <td><?php echo htmlspecialchars($vaga['departamento']); ?></td>
+                        <td><?php echo htmlspecialchars($vaga['localizacao']); ?></td>
+                        <td><?php echo date('d/m/Y', strtotime($vaga['data_publicacao'])); ?></td>
+                        <td><?php echo $vaga['total_candidaturas']; ?></td>
+                        <td><span class="status status-<?php echo strtolower($vaga['status']); ?>"><?php echo htmlspecialchars($vaga['status']); ?></span></td>
                     </tr>
-                    <tr>
-                        <td>Analista de Marketing Digital</td>
-                        <td>Marketing</td>
-                        <td>Porto</td>
-                        <td>20/05/2023</td>
-                        <td>18</td>
-                        <td><span class="status status-active">Ativa</span></td>
-                    </tr>
-                    <tr>
-                        <td>Gerente de Vendas</td>
-                        <td>Vendas</td>
-                        <td>Lisboa</td>
-                        <td>01/06/2023</td>
-                        <td>12</td>
-                        <td><span class="status status-active">Ativa</span></td>
-                    </tr>
-                    <tr>
-                        <td>Especialista em Recursos Humanos</td>
-                        <td>Recursos Humanos</td>
-                        <td>Porto</td>
-                        <td>03/06/2023</td>
-                        <td>9</td>
-                        <td><span class="status status-active">Ativa</span></td>
-                    </tr>
-                    <tr>
-                        <td>Contador Sênior</td>
-                        <td>Financeiro</td>
-                        <td>Lisboa</td>
-                        <td>10/05/2023</td>
-                        <td>15</td>
-                        <td><span class="status status-closed">Encerrada</span></td>
-                    </tr>
+                    <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
@@ -608,46 +661,18 @@ if (!isset($_SESSION['id_empresa'])) {
                         <th>Nome</th>
                         <th>Vaga</th>
                         <th>Data da Candidatura</th>
-                        <th>Etapa</th>
                         <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
+                    <?php while($candidato = $candidatos_recentes->fetch_assoc()): ?>
                     <tr>
-                        <td>João Silva</td>
-                        <td>Desenvolvedor Front-end</td>
-                        <td>10/06/2023</td>
-                        <td><span class="stage-badge">Entrevista Técnica</span></td>
-                        <td><span class="status status-interview">Entrevista</span></td>
+                        <td><?php echo htmlspecialchars($candidato['candidato_nome']); ?></td>
+                        <td><?php echo htmlspecialchars($candidato['vaga_titulo']); ?></td>
+                        <td><?php echo date('d/m/Y', strtotime($candidato['data_candidatura'])); ?></td>
+                        <td><span class="status status-<?php echo strtolower($candidato['status']); ?>"><?php echo htmlspecialchars($candidato['status']); ?></span></td>
                     </tr>
-                    <tr>
-                        <td>Maria Pereira</td>
-                        <td>Analista de Marketing Digital</td>
-                        <td>12/06/2023</td>
-                        <td><span class="stage-badge">Avaliação CV</span></td>
-                        <td><span class="status status-review">Em Análise</span></td>
-                    </tr>
-                    <tr>
-                        <td>Carlos Santos</td>
-                        <td>Desenvolvedor Front-end</td>
-                        <td>08/06/2023</td>
-                        <td><span class="stage-badge">Entrevista RH</span></td>
-                        <td><span class="status status-interview">Entrevista</span></td>
-                    </tr>
-                    <tr>
-                        <td>Ana Oliveira</td>
-                        <td>Contador Sênior</td>
-                        <td>15/05/2023</td>
-                        <td><span class="stage-badge">Proposta</span></td>
-                        <td><span class="status status-hired">Contratado</span></td>
-                    </tr>
-                    <tr>
-                        <td>Ricardo Lima</td>
-                        <td>Gerente de Vendas</td>
-                        <td>05/06/2023</td>
-                        <td><span class="stage-badge">Teste Prático</span></td>
-                        <td><span class="status status-rejected">Rejeitado</span></td>
-                    </tr>
+                    <?php endwhile; ?>
                 </tbody>
             </table>
         </div>
@@ -673,10 +698,19 @@ if (!isset($_SESSION['id_empresa'])) {
             const jobApplicationsChart = new Chart(ctxJobApplications, {
                 type: 'bar',
                 data: {
-                    labels: ['Dev Front-end', 'Analista Marketing', 'Gerente Vendas', 'Esp. RH', 'Contador'],
+                    labels: [<?php 
+                        $labels = [];
+                        $data = [];
+                        $dados_grafico_vagas->data_seek(0);
+                        while($row = $dados_grafico_vagas->fetch_assoc()) {
+                            $labels[] = "'" . addslashes($row['titulo']) . "'";
+                            $data[] = $row['total'];
+                        }
+                        echo implode(',', $labels);
+                    ?>],
                     datasets: [{
                         label: 'Candidaturas',
-                        data: [24, 18, 12, 9, 15],
+                        data: [<?php echo implode(',', $data); ?>],
                         backgroundColor: 'rgba(100, 194, 167, 0.7)',
                         borderColor: 'rgba(100, 194, 167, 1)',
                         borderWidth: 1
@@ -700,22 +734,23 @@ if (!isset($_SESSION['id_empresa'])) {
             const candidateStatusChart = new Chart(ctxCandidateStatus, {
                 type: 'doughnut',
                 data: {
-                    labels: ['Em Análise', 'Entrevista', 'Teste', 'Proposta', 'Contratado', 'Rejeitado'],
+                    labels: ['Em análise', 'Entrevista', 'Contratado', 'Rejeitado'],
                     datasets: [{
-                        data: [35, 28, 15, 5, 12, 30],
+                        data: [
+                            <?php echo $status_data['Em análise']; ?>,
+                            <?php echo $status_data['Entrevista']; ?>,
+                            <?php echo $status_data['Aprovado']; ?>,
+                            <?php echo $status_data['Rejeitado']; ?>
+                        ],
                         backgroundColor: [
-                            'rgba(255, 193, 7, 0.7)',
-                            'rgba(33, 150, 243, 0.7)',
-                            'rgba(156, 39, 176, 0.7)',
-                            'rgba(255, 152, 0, 0.7)',
-                            'rgba(76, 175, 80, 0.7)',
-                            'rgba(244, 67, 54, 0.7)'
+                            'rgba(255, 193, 7, 0.7)',  // Em análise - amarelo
+                            'rgba(33, 150, 243, 0.7)', // Entrevista - azul
+                            'rgba(76, 175, 80, 0.7)',  // Contratado - verde
+                            'rgba(244, 67, 54, 0.7)'   // Rejeitado - vermelho
                         ],
                         borderColor: [
                             'rgba(255, 193, 7, 1)',
                             'rgba(33, 150, 243, 1)',
-                            'rgba(156, 39, 176, 1)',
-                            'rgba(255, 152, 0, 1)',
                             'rgba(76, 175, 80, 1)',
                             'rgba(244, 67, 54, 1)'
                         ],
@@ -735,4 +770,4 @@ if (!isset($_SESSION['id_empresa'])) {
     </script>
     <script src="./js/theme.js"></script>
 </body>
-</html> 
+</html>

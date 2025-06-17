@@ -13,15 +13,14 @@
         $stmt->execute([$_SESSION['empresa_id']]);
         $empresa = $stmt->fetch();
         
-        // Buscar vagas da empresa com mais detalhes
+        // Modificar a query para buscar todas as vagas de todas as empresas
         $stmt = $pdo->prepare("
             SELECT v.*, e.nome as empresa_nome, e.logo as empresa_logo 
             FROM vagas v 
             JOIN empresas_recrutamento e ON v.empresa_id = e.id 
-            WHERE v.empresa_id = ? 
             ORDER BY v.data_publicacao DESC
         ");
-        $stmt->execute([$_SESSION['empresa_id']]);
+        $stmt->execute();
         $vagas = $stmt->fetchAll();
         
         // Contar candidaturas totais (exemplo)
@@ -45,195 +44,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="" href="sam2-05.png">
+    <link rel="stylesheet" href="../all.css/emprego.css/emp_vagas.css">
     <link rel="stylesheet" href="../all.css/emprego.css/emp_search.css">
     <link rel="stylesheet" href="../all.css/emprego.css/emp_header.css">
     <title>SAM Emprego</title>
-    <style>
-        :root {
-            --primary-color: #3EB489;
-            --primary-light: #4fc89a;
-            --primary-dark: #339873;
-            --secondary-color:rgb(84, 115, 146);
-            --light-gray: #f5f7fa;
-            --medium-gray: #e9ecef;
-            --dark-gray: #6c757d;
-            --box-shadow: 0 3px 15px rgba(0,0,0,0.1);
-            --transition: all 0.3s ease;
-            --border-radius: 12px;
-        }
-
-        body {
-            font-family: 'Poppins', sans-serif;
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            margin: 0;
-            padding: 0;
-            color: #333;
-            line-height: 1.6;
-        }
-
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 20px;
-            background-color: white;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            width: 100%;
-            box-shadow: none;
-        }
-
-        .header-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            width: 100%;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        .logo {
-            height: 80px;
-        }
-
-        .logo img {
-            height: 80px;
-        }
-
-        .nav-container {
-            flex-grow: 1;
-            display: flex;
-            justify-content: center;
-        }
-
-        .nav-menu {
-            display: flex;
-            gap: 20px;
-        }
-
-        .nav-menu a {
-            color: var(--secondary-color);
-            text-decoration: none;
-            font-weight: 500;
-            padding: 8px 15px;
-            border-radius: 50px;
-            transition: var(--transition);
-        }
-
-        .nav-menu a:hover {
-            background-color: var(--light-gray);
-            color: var(--primary-color);
-        }
-
-        .nav-menu a.active {
-            color: var(--primary-color);
-            position: relative;
-        }
-
-        .nav-menu a.active::after {
-            content: '';
-            position: absolute;
-            bottom: -5px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 20px;
-            height: 3px;
-            background-color: var(--primary-color);
-            border-radius: 10px;
-        }
-
-        /* Estilos para a seção de usuário */
-        .user-section {
-            display: flex;
-            align-items: center;
-        }
-
-        .user-dropdown {
-            display: flex;
-            width: 220px;
-            height: 32px;
-            align-items: center;
-            background-color: #3EB489;
-            color: white;
-            padding: 8px 15px;
-            border-radius: 25px;
-            margin-right: 10px;
-            cursor: pointer;
-        }
-
-        .user-avatar {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background-color: #f5f5f5;
-            margin-right: 10px;
-            gap: 10px;
-            color: #000;
-            border: #3EB489 solid 1px;
-        }
-
-        .settings-icon {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background-color: #f5f5f5;
-            border: 2px solid #3EB489;
-            color: #3EB489;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            font-size: 18px;
-        }
-
-        /* Container principal com largura máxima */
-        .main-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 20px;
-        }
-
-        .search-container {
-            max-width: 1200px;
-            margin: 20px auto;
-            background-color: var(white);
-            border-radius: 15px;
-            overflow: hidden;
-            color: white;
-            transition: all 0.3s ease;
-        }
-
-        .search-container.collapsed {
-            max-height: 80px;
-        }
-
-        .search-box {
-            max-width: 1200px;
-            margin: 20px auto;
-            display: flex;
-            gap: 10px;
-            background-color: white;
-            border-radius: 15px;
-            padding: 15px;
-            box-shadow: var(--box-shadow);
-        }
-
-        .job-listings {
-            max-width: 1200px;
-            margin: 20px auto;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        /* Restante dos estilos CSS para search-box, job-listings, etc. mantidos conforme original */
-    </style>
 </head>
 <body>
+
 <header class="header">
         <div class="header-content">
             <div class="logo">
@@ -242,8 +59,8 @@
             <div class="nav-container">
                 <nav class="nav-menu">
                     <a href="job_search_page_emp.php" class="active">Vagas</a>
-                    <a href="curriculums.php">Meu Currículo</a>
-                    <a href="minhas_candidaturas.php">Candidaturas</a>
+                    <a href="emp_vagas.php">Minhas vagas</a>
+                    <a href="empresas_candidaturas.php">Candidaturas</a>
                     <a href="painel_candidato.php">Perfil</a>
                 </nav>
             </div>
@@ -381,12 +198,12 @@
                         <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                     </svg>
                 </div>
-                <input type="text" placeholder="Pesquisar vagas...">
+                <input type="text" id="searchInput" placeholder="Pesquisar vagas..." onkeyup="searchJobs()">
             </div>
-            <button class="search-button">Procurar</button>
+            <button class="search-button" onclick="searchJobs()">Procurar</button>
         </div>
 
-        <div class="job-listings">
+        <div class="job-listings" id="jobListings">
             <?php
             if (isset($vagas) && !empty($vagas)) {
                 foreach ($vagas as $vaga) {
@@ -420,14 +237,14 @@
                     }
             ?>
                 <div class="job-card">
-                    <div class="job-header"><?php echo htmlspecialchars($empresa['nome']); ?></div>
+                    <div class="job-header"><?php echo htmlspecialchars($vaga['empresa_nome']); ?></div>
                     <div class="job-content">
                         <div class="job-logo">
-                            <img src="../fotos/sam30-13.png" alt="<?php echo htmlspecialchars($empresa['nome']); ?> Logo">
+                            <img src="<?php echo htmlspecialchars($vaga['empresa_logo']); ?>" alt="<?php echo htmlspecialchars($vaga['empresa_nome']); ?> Logo">
                         </div>
                         <div class="job-details">
                             <div class="job-title"><?php echo htmlspecialchars($vaga['titulo']); ?></div>
-                            <div class="job-company"><?php echo htmlspecialchars($empresa['nome']); ?></div>
+                            <div class="job-company"><?php echo htmlspecialchars($vaga['empresa_nome']); ?></div>
                             <div class="job-info">
                                 <?php if ($vaga['departamento']): ?>
                                 <div class="job-category">
@@ -472,18 +289,11 @@
                                         ?>
                                     </div>
                                 <?php endif; ?>
-
-                                <?php if ($vaga['idioma']): ?>
-                                <div class="job-language">
-                                    <span class="icon icon-language"></span>
-                                    <?php echo htmlspecialchars($vaga['idioma']); ?>
-                                </div>
-                                <?php endif; ?>
                             </div>
                         </div>
                         <div class="job-actions">
                             <div class="job-status <?php echo $statusClass; ?>"><?php echo $statusText; ?></div>
-                            <div class="job-view">Visualizar detalhes</div>
+                            <a href="job_view_page.php?id=<?php echo $vaga['id']; ?>" class="job-view">Visualizar detalhes</a>
                         </div>
                     </div>
                 </div>
@@ -525,6 +335,56 @@
             
             // Adicionar evento de clique ao cabeçalho do filtro
             filterToggle.addEventListener('click', toggleDropdown);
+        });
+
+        // Função de pesquisa
+        function searchJobs() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const jobCards = document.querySelectorAll('.job-card');
+            let foundJobs = 0;
+
+            jobCards.forEach(card => {
+                const title = card.querySelector('.job-title').textContent.toLowerCase();
+                const company = card.querySelector('.job-company').textContent.toLowerCase();
+                const category = card.querySelector('.job-category')?.textContent.toLowerCase() || '';
+                const location = card.querySelector('.job-location')?.textContent.toLowerCase() || '';
+                
+                if (title.includes(searchTerm) || 
+                    company.includes(searchTerm) || 
+                    category.includes(searchTerm) || 
+                    location.includes(searchTerm) || 
+                    searchTerm === '') {
+                    card.style.display = 'block';
+                    foundJobs++;
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+
+            // Mostrar mensagem se nenhuma vaga for encontrada
+            const jobListings = document.getElementById('jobListings');
+            const existingNoResults = jobListings.querySelector('.no-results');
+            
+            if (foundJobs === 0) {
+                if (!existingNoResults) {
+                    const noResultsDiv = document.createElement('div');
+                    noResultsDiv.className = 'no-results';
+                    noResultsDiv.innerHTML = 'Nenhuma vaga encontrada para "' + document.getElementById('searchInput').value + '"';
+                    noResultsDiv.style.cssText = 'text-align: center; padding: 20px; color: #666; font-style: italic;';
+                    jobListings.appendChild(noResultsDiv);
+                }
+            } else {
+                if (existingNoResults) {
+                    existingNoResults.remove();
+                }
+            }
+        }
+
+        // Pesquisar ao pressionar Enter
+        document.getElementById('searchInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                searchJobs();
+            }
         });
     </script>
     <script src="../js/dropdown.js"></script>

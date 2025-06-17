@@ -18,4 +18,4 @@ try {
 } catch (PDOException $e) {
     // Em caso de erro na conexão
     die("Erro na conexão com o banco de dados: " . $e->getMessage());
-} 
+}

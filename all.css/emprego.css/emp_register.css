@@ -32,6 +32,9 @@
         margin: 0 auto;
     }
 
+    .logo{
+        height: 80px;
+    }
     .form-section{
         background-color: white;
         border-radius: 20px;
@@ -104,10 +107,10 @@
     .phone-input{
         text-align: center;
         flex: 1;
-        padding: 6px 12px;
+        padding: 4px 10px;
         border: 1px solid #ccc;
         border-radius: 25px;
-        width: 55.5%;
+        width: 70.5%;
         font-size: 12px;
     }
 
