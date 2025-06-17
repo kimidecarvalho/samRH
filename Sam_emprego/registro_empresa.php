@@ -17,6 +17,7 @@ unset($_SESSION['dados_form']);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="" href="sam2-05.png">
     <link rel="stylesheet" href="../all.css/login.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <title>SAM - Cadastro de Empresa</title>
 </head>
 <style>
@@ -212,6 +213,61 @@ unset($_SESSION['dados_form']);
         margin-bottom: 0.3rem;
     }
 
+    /* Estilo para o botão de mostrar senha */
+    .password-toggle {
+        position: absolute;
+        right: 10px;
+        top: calc(50% + 12px); /* Ajustado para considerar a altura do label */
+        transform: translateY(-50%);
+        border: none;
+        background: none;
+        cursor: pointer;
+        color: #666;
+        padding: 5px;
+        height: 24px; /* Altura fixa para centralização */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Estilo para o grupo do telefone */
+    .phone-group {
+        display: flex;
+        gap: 10px;
+        align-items: stretch;
+    }
+
+    .phone-group select {
+        width: 140px;
+        padding: 0.75rem;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: all 0.3s ease;
+        font-family: 'Poppins', sans-serif;
+        background-color: #f8f9fa;
+        cursor: pointer;
+        height: 100%;
+    }
+
+    .phone-group .phone-input {
+        flex: 1;
+        min-width: 0; /* Previne overflow em containers flex */
+    }
+
+    .phone-group .phone-input input {
+        width: 100%;
+        margin: 0;
+        height: 100%;
+    }
+
+    .phone-group select:focus,
+    .phone-group .phone-input input:focus {
+        outline: none;
+        border-color: var(--primary-green);
+        box-shadow: 0 0 0 3px rgba(62, 180, 137, 0.2);
+    }
+
     /* Responsividade */
     @media (max-width: 768px) {
         .login-card {
@@ -236,6 +292,31 @@ unset($_SESSION['dados_form']);
         .login-title {
             font-size: 1.5rem;
         }
+
+        .phone-group {
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .phone-group select {
+            width: 100%;
+        }
+    }
+
+    .input-erro {
+        border-color: #dc3545 !important;
+        box-shadow: 0 0 0 0.2rem rgba(220,53,69,.25) !important;
+    }
+
+    .form-group .feedback-text {
+        color: #dc3545;
+        font-size: 0.8rem;
+        margin-top: 0.25rem;
+        display: none;
+    }
+
+    .form-group.error .feedback-text {
+        display: block;
     }
 </style>
 <body>
@@ -325,13 +406,27 @@ unset($_SESSION['dados_form']);
                     
                     <div class="form-group">
                         <label for="telefone">Telefone</label>
-                        <input 
-                            type="tel" 
-                            id="telefone" 
-                            name="telefone" 
-                            placeholder="(00) 00000-0000" 
-                            value="<?php echo htmlspecialchars($dadosForm['telefone'] ?? ''); ?>"
-                        >
+                        <div class="phone-group">
+                            <select name="codigo_pais" id="codigo_pais">
+                                <option value="+244">+244 (Angola)</option>
+                                <option value="+258">+258 (Moçambique)</option>
+                                <option value="+239">+239 (São Tomé e Príncipe)</option>
+                                <option value="+245">+245 (Guiné-Bissau)</option>
+                                <option value="+238">+238 (Cabo Verde)</option>
+                                <option value="+351">+351 (Portugal)</option>
+                                <option value="+55">+55 (Brasil)</option>
+                            </select>
+                            <div class="phone-input">
+                                <input 
+                                    type="tel" 
+                                    id="telefone" 
+                                    name="telefone" 
+                                    placeholder="900000000" 
+                                    value="<?php echo htmlspecialchars($dadosForm['telefone'] ?? ''); ?>"
+                                    required
+                                >
+                            </div>
+                        </div>
                     </div>
                 </div>
                 
@@ -381,6 +476,9 @@ unset($_SESSION['dados_form']);
                             placeholder="Crie uma senha" 
                             required
                         >
+                        <button type="button" class="password-toggle" onclick="togglePassword('senha')">
+                            <i class="fa-regular fa-eye"></i>
+                        </button>
                     </div>
                     
                     <div class="form-group">
@@ -392,6 +490,9 @@ unset($_SESSION['dados_form']);
                             placeholder="Confirme sua senha" 
                             required
                         >
+                        <button type="button" class="password-toggle" onclick="togglePassword('confirmarSenha')">
+                            <i class="fa-regular fa-eye"></i>
+                        </button>
                     </div>
                 </div>
                 
@@ -414,4 +515,161 @@ unset($_SESSION['dados_form']);
         </div>
     </div>
 </body>
+<script>
+function togglePassword(inputId) {
+    const input = document.getElementById(inputId);
+    const icon = event.currentTarget.querySelector('i');
+    
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.className = 'fa-regular fa-eye-slash';
+    } else {
+        input.type = 'password';
+        icon.className = 'fa-regular fa-eye';
+    }
+}
+
+function validarEmail(email) {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
+}
+
+function validarTelefone(telefone) {
+    const re = /^\d{9}$/;
+    return re.test(telefone);
+}
+
+function validarSenha(senha) {
+    const re = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{8,}$/;
+    return re.test(senha);
+}
+
+function validarURL(url) {
+    try {
+        new URL(url);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function validarNome(nome) {
+    return nome.length >= 3;
+}
+
+function validarDescricao(descricao) {
+    return descricao.length >= 10;
+}
+
+function validarEndereco(endereco) {
+    return endereco.length >= 5;
+}
+
+function validarSetor(setor) {
+    return setor.length >= 3;
+}
+
+document.getElementById('registroEmpresaForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const nome = document.getElementById('nome').value;
+    const descricao = document.getElementById('descricao').value;
+    const email = document.getElementById('email').value;
+    const telefone = document.getElementById('telefone').value;
+    const endereco = document.getElementById('endereco').value;
+    const setor = document.getElementById('setor').value;
+    const tamanho = document.getElementById('tamanho').value;
+    const senha = document.getElementById('senha').value;
+    const confirmarSenha = document.getElementById('confirmarSenha').value;
+    const website = document.getElementById('website').value;
+    
+    let erros = [];
+    
+    // Validação do nome da empresa
+    if (!validarNome(nome)) {
+        erros.push('Nome da empresa deve ter no mínimo 3 caracteres');
+        document.getElementById('nome').classList.add('input-erro');
+    }
+    
+    // Validação da descrição
+    if (!validarDescricao(descricao)) {
+        erros.push('A descrição deve ter no mínimo 10 caracteres');
+        document.getElementById('descricao').classList.add('input-erro');
+    }
+    
+    // Validação do email
+    if (!validarEmail(email)) {
+        erros.push('Email corporativo inválido');
+        document.getElementById('email').classList.add('input-erro');
+    }
+    
+    // Validação do telefone
+    if (!validarTelefone(telefone)) {
+        erros.push('Telefone deve conter 9 dígitos');
+        document.getElementById('telefone').classList.add('input-erro');
+    }
+    
+    // Validação do endereço
+    if (!validarEndereco(endereco)) {
+        erros.push('Endereço deve ter no mínimo 5 caracteres');
+        document.getElementById('endereco').classList.add('input-erro');
+    }
+    
+    // Validação do setor
+    if (!validarSetor(setor)) {
+        erros.push('Setor deve ter no mínimo 3 caracteres');
+        document.getElementById('setor').classList.add('input-erro');
+    }
+    
+    // Validação do tamanho da empresa
+    if (!tamanho) {
+        erros.push('Selecione o tamanho da empresa');
+        document.getElementById('tamanho').classList.add('input-erro');
+    }
+    
+    // Validação da senha
+    if (!validarSenha(senha)) {
+        erros.push('A senha deve ter no mínimo 8 caracteres, uma letra maiúscula, uma minúscula e um número');
+        document.getElementById('senha').classList.add('input-erro');
+    }
+    
+    // Validação de confirmação de senha
+    if (senha !== confirmarSenha) {
+        erros.push('As senhas não coincidem');
+        document.getElementById('confirmarSenha').classList.add('input-erro');
+    }
+    
+    // Validação do website (se fornecido)
+    if (website && !validarURL(website)) {
+        erros.push('URL do website inválida');
+        document.getElementById('website').classList.add('input-erro');
+    }
+    
+    if (erros.length > 0) {
+        const alertaErro = document.createElement('div');
+        alertaErro.className = 'alert alert-danger';
+        alertaErro.innerHTML = '<ul>' + erros.map(erro => `<li>${erro}</li>`).join('') + '</ul>';
+        
+        // Remove alertas anteriores
+        const alertaAnterior = document.querySelector('.alert-danger');
+        if (alertaAnterior) {
+            alertaAnterior.remove();
+        }
+        
+        // Insere o novo alerta no início do formulário
+        this.insertBefore(alertaErro, this.firstChild);
+    } else {
+        this.submit();
+    }
+});
+
+// Feedback visual em tempo real
+document.querySelectorAll('input, textarea, select').forEach(input => {
+    input.addEventListener('input', function() {
+        if (this.classList.contains('input-erro')) {
+            this.classList.remove('input-erro');
+        }
+    });
+});
+</script>
 </html>

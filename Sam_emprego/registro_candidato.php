@@ -13,10 +13,11 @@ unset($_SESSION['dados_form_candidato']);
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800&display=swap" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="" href="sam2-05.png">
     <link rel="stylesheet" href="../all.css/login.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <title>SAM - Cadastro de Candidato</title>
 </head>
 <style>
@@ -189,6 +190,80 @@ unset($_SESSION['dados_form_candidato']);
         margin-bottom: 0.3rem;
     }
 
+    /* Estilo para o grupo do telefone */
+    .phone-group {
+        display: flex;
+        gap: 10px;
+        align-items: stretch;
+    }
+
+    .phone-group select {
+        width: 140px;
+        padding: 0.75rem;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: all 0.3s ease;
+        font-family: 'Poppins', sans-serif;
+        background-color: #f8f9fa;
+        cursor: pointer;
+        height: 100%;
+    }
+
+    .phone-group .phone-input {
+        flex: 1;
+        min-width: 0; /* Previne overflow em containers flex */
+    }
+
+    .phone-group .phone-input input {
+        width: 100%;
+        margin: 0;
+        height: 100%;
+    }
+
+    .phone-group select:focus,
+    .phone-group .phone-input input:focus {
+        outline: none;
+        border-color: var(--primary-blue);
+        box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2);
+    }
+
+    @media (max-width: 576px) {
+        .phone-group {
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .phone-group select {
+            width: 100%;
+        }
+    }
+
+    /* Estilo para o botão de mostrar senha */
+    .password-toggle {
+        position: absolute;
+        right: 10px;
+        top: calc(50% + 12px); /* Ajustado para considerar a altura do label */
+        transform: translateY(-50%);
+        border: none;
+        background: none;
+        cursor: pointer;
+        color: #666;
+        padding: 5px;
+        height: 24px; /* Altura fixa para centralização */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .password-toggle:hover {
+        color: var(--primary-blue);
+    }
+
+    .form-group {
+        position: relative;
+    }
+
     /* Responsividade */
     @media (max-width: 768px) {
         .login-card {
@@ -213,6 +288,22 @@ unset($_SESSION['dados_form_candidato']);
         .login-title {
             font-size: 1.5rem;
         }
+    }
+
+    .input-erro {
+        border-color: #dc3545 !important;
+        box-shadow: 0 0 0 0.2rem rgba(220,53,69,.25) !important;
+    }
+
+    .form-group .feedback-text {
+        color: #dc3545;
+        font-size: 0.8rem;
+        margin-top: 0.25rem;
+        display: none;
+    }
+
+    .form-group.error .feedback-text {
+        display: block;
     }
 </style>
 <body>
@@ -280,14 +371,27 @@ unset($_SESSION['dados_form_candidato']);
                 
                 <div class="form-group">
                     <label for="telefone">Telefone</label>
-                    <input 
-                        type="tel" 
-                        id="telefone" 
-                        name="telefone" 
-                        placeholder="(00) 00000-0000" 
-                        value="<?php echo htmlspecialchars($dadosForm['telefone'] ?? ''); ?>"
-                        required
-                    >
+                    <div class="phone-group">
+                        <select name="codigo_pais" id="codigo_pais">
+                            <option value="+244">+244 (Angola)</option>
+                            <option value="+258">+258 (Moçambique)</option>
+                            <option value="+239">+239 (São Tomé e Príncipe)</option>
+                            <option value="+245">+245 (Guiné-Bissau)</option>
+                            <option value="+238">+238 (Cabo Verde)</option>
+                            <option value="+351">+351 (Portugal)</option>
+                            <option value="+55">+55 (Brasil)</option>
+                        </select>
+                        <div class="phone-input">
+                            <input 
+                                type="tel" 
+                                id="telefone" 
+                                name="telefone" 
+                                placeholder="900000000" 
+                                value="<?php echo htmlspecialchars($dadosForm['telefone'] ?? ''); ?>"
+                                required
+                            >
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="form-row">
@@ -300,6 +404,9 @@ unset($_SESSION['dados_form_candidato']);
                             placeholder="Crie uma senha" 
                             required
                         >
+                        <button type="button" class="password-toggle" onclick="togglePassword('senha')">
+                            <i class="fa-regular fa-eye"></i>
+                        </button>
                     </div>
                     
                     <div class="form-group">
@@ -311,6 +418,9 @@ unset($_SESSION['dados_form_candidato']);
                             placeholder="Confirme sua senha" 
                             required
                         >
+                        <button type="button" class="password-toggle" onclick="togglePassword('confirmarSenha')">
+                            <i class="fa-regular fa-eye"></i>
+                        </button>
                     </div>
                 </div>
                 
@@ -322,4 +432,100 @@ unset($_SESSION['dados_form_candidato']);
         </div>
     </div>
 </body>
+<script>
+function togglePassword(inputId) {
+    const input = document.getElementById(inputId);
+    const icon = event.currentTarget.querySelector('i');
+    
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.className = 'fa-regular fa-eye-slash';
+    } else {
+        input.type = 'password';
+        icon.className = 'fa-regular fa-eye';
+    }
+}
+
+function validarEmail(email) {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
+}
+
+function validarTelefone(telefone) {
+    const re = /^\d{9}$/;
+    return re.test(telefone);
+}
+
+function validarSenha(senha) {
+    // Mínimo 8 caracteres, pelo menos uma letra maiúscula, uma minúscula e um número
+    const re = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{8,}$/;
+    return re.test(senha);
+}
+
+document.getElementById('registroCandidatoForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const email = document.getElementById('email').value;
+    const telefone = document.getElementById('telefone').value;
+    const senha = document.getElementById('senha').value;
+    const confirmarSenha = document.getElementById('confirmarSenha').value;
+    
+    let erros = [];
+    
+    if (!validarEmail(email)) {
+        erros.push('Email inválido');
+        document.getElementById('email').classList.add('input-erro');
+    } else {
+        document.getElementById('email').classList.remove('input-erro');
+    }
+    
+    if (!validarTelefone(telefone)) {
+        erros.push('Telefone deve conter 9 dígitos');
+        document.getElementById('telefone').classList.add('input-erro');
+    } else {
+        document.getElementById('telefone').classList.remove('input-erro');
+    }
+    
+    if (!validarSenha(senha)) {
+        erros.push('A senha deve ter no mínimo 8 caracteres, uma letra maiúscula, uma minúscula e um número');
+        document.getElementById('senha').classList.add('input-erro');
+    } else {
+        document.getElementById('senha').classList.remove('input-erro');
+    }
+    
+    if (senha !== confirmarSenha) {
+        erros.push('As senhas não coincidem');
+        document.getElementById('confirmarSenha').classList.add('input-erro');
+    } else {
+        document.getElementById('confirmarSenha').classList.remove('input-erro');
+    }
+    
+    if (erros.length > 0) {
+        const alertaErro = document.createElement('div');
+        alertaErro.className = 'alert alert-danger';
+        alertaErro.innerHTML = '<ul>' + erros.map(erro => `<li>${erro}</li>`).join('') + '</ul>';
+        
+        // Remove alertas anteriores
+        const alertaAnterior = document.querySelector('.alert-danger');
+        if (alertaAnterior) {
+            alertaAnterior.remove();
+        }
+        
+        // Insere o novo alerta no início do formulário
+        this.insertBefore(alertaErro, this.firstChild);
+    } else {
+        this.submit();
+    }
+});
+
+// Adiciona feedback visual em tempo real
+document.querySelectorAll('input').forEach(input => {
+    input.addEventListener('input', function() {
+        const parent = this.parentElement;
+        if (this.classList.contains('input-erro')) {
+            this.classList.remove('input-erro');
+        }
+    });
+});
+</script>
 </html>

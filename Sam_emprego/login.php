@@ -28,6 +28,7 @@ if (isset($_SESSION['empresa_id'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="" href="sam2-05.png">
     <link rel="stylesheet" href="../all.css/login.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <title>SAM - Login</title>
 </head>
 <style>
@@ -236,6 +237,27 @@ if (isset($_SESSION['empresa_id'])) {
         color: #155724;
     }
 
+    /* Estilo para o botão de mostrar senha */
+    .password-toggle {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        border: none;
+        background: none;
+        cursor: pointer;
+        color: #666;
+        padding: 5px;
+    }
+
+    .password-toggle:hover {
+        color: var(--primary-green);
+    }
+
+    .form-group {
+        position: relative;
+    }
+
     /* Responsividade */
     @media (max-width: 576px) {
         .login-card {
@@ -324,6 +346,9 @@ if (isset($_SESSION['empresa_id'])) {
                         placeholder="Digite sua senha" 
                         required
                     >
+                    <button type="button" class="password-toggle" onclick="togglePassword('senha')">
+                        <i class="fa-regular fa-eye"></i>
+                    </button>
                     <div class="forgot-password">
                         <a href="recuperar_senha.php">Esqueceu a senha?</a>
                     </div>
@@ -354,4 +379,18 @@ if (isset($_SESSION['empresa_id'])) {
         </div>
     </div>
 </body>
+<script>
+function togglePassword(inputId) {
+    const input = document.getElementById(inputId);
+    const icon = event.currentTarget.querySelector('i');
+    
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.className = 'fa-regular fa-eye-slash';
+    } else {
+        input.type = 'password';
+        icon.className = 'fa-regular fa-eye';
+    }
+}
+</script>
 </html>

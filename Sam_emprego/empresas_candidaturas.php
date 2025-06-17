@@ -61,6 +61,7 @@ try {
     <link rel="stylesheet" href="../all.css/emprego.css/emp_search.css">
     <link rel="stylesheet" href="../all.css/emprego.css/emp_header.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.32/dist/sweetalert2.min.css">
     <style>
         * {
             margin: 0;
@@ -832,7 +833,7 @@ try {
 
                 <div class="form-group">
                     <label>Data</label>
-                    <input type="date" id="entrevistaData" name="data" required>
+                    <input type="text" id="entrevistaData" name="data" placeholder="DD/MM/AAAA" required>
                 </div>
 
                 <div class="form-group">
@@ -885,26 +886,55 @@ try {
             showInterviewModal(candidaturaId);
             return;
         }
-        if (confirm('Deseja alterar o status desta candidatura para "' + newStatus + '"?')) {
-            fetch('update_candidatura_status.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `id=${candidaturaId}&status=${newStatus}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    location.reload();
-                } else {
-                    alert('Erro ao atualizar status: ' + (data.message || 'Erro desconhecido'));
-                }
-            })
-            .catch(error => {
-                alert('Erro ao processar a requisição: ' + error);
-            });
-        }
+        
+        Swal.fire({
+            title: 'Confirmar alteração',
+            text: `Deseja alterar o status desta candidatura para "${newStatus}"?`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#3EB489',
+            cancelButtonColor: '#d33',
+            confirmButtonText: 'Sim, alterar',
+            cancelButtonText: 'Cancelar'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                fetch('update_candidatura_status.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `id=${candidaturaId}&status=${newStatus}`
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        Swal.fire({
+                            title: 'Sucesso!',
+                            text: 'Status atualizado com sucesso!',
+                            icon: 'success',
+                            confirmButtonColor: '#3EB489'
+                        }).then(() => {
+                            location.reload();
+                        });
+                    } else {
+                        Swal.fire({
+                            title: 'Erro!',
+                            text: 'Erro ao atualizar status: ' + (data.message || 'Erro desconhecido'),
+                            icon: 'error',
+                            confirmButtonColor: '#3EB489'
+                        });
+                    }
+                })
+                .catch(error => {
+                    Swal.fire({
+                        title: 'Erro!',
+                        text: 'Erro ao processar a requisição: ' + error,
+                        icon: 'error',
+                        confirmButtonColor: '#3EB489'
+                    });
+                });
+            }
+        });
     }
 
     const modal = document.getElementById('interviewModal');
@@ -916,12 +946,118 @@ try {
     let map;
     let marker;
 
+    // Função para formatar data no padrão brasileiro
+    function formatarData(data) {
+        const partes = data.split('/');
+        if (partes.length === 3) {
+            return `${partes[2]}-${partes[1]}-${partes[0]}`;
+        }
+        return data;
+    }
+
+    // Função para validar data e hora
+    function validateDateTime() {
+        const dataInput = document.getElementById('entrevistaData');
+        const horaInput = document.getElementById('entrevistaHora');
+        
+        // Obter data e hora atual
+        const now = new Date();
+        const currentDate = now.toLocaleDateString('pt-BR').split('/').reverse().join('-');
+        
+        // Validar formato da data
+        const dataDigitada = dataInput.value;
+        if (!/^\d{2}\/\d{2}\/\d{4}$/.test(dataDigitada)) {
+            Swal.fire({
+                title: 'Formato inválido',
+                text: 'Por favor, insira a data no formato DD/MM/AAAA',
+                icon: 'warning',
+                confirmButtonColor: '#3EB489'
+            });
+            return false;
+        }
+
+        // Converter data para formato YYYY-MM-DD para comparação
+        const dataFormatada = formatarData(dataDigitada);
+        
+        // Se a data selecionada for hoje, validar a hora
+        if (dataFormatada === currentDate) {
+            const currentHour = now.getHours();
+            const currentMinute = now.getMinutes();
+            
+            // Converter a hora selecionada para minutos para comparação
+            const [selectedHour, selectedMinute] = horaInput.value.split(':').map(Number);
+            const selectedTimeInMinutes = selectedHour * 60 + selectedMinute;
+            const currentTimeInMinutes = currentHour * 60 + currentMinute;
+            
+            if (selectedTimeInMinutes <= currentTimeInMinutes) {
+                Swal.fire({
+                    title: 'Hora inválida',
+                    text: 'Por favor, selecione uma hora futura para hoje.',
+                    icon: 'warning',
+                    confirmButtonColor: '#3EB489'
+                });
+                // Definir a próxima hora disponível
+                const nextHour = currentHour + 1;
+                horaInput.value = `${nextHour.toString().padStart(2, '0')}:00`;
+                return false;
+            }
+        }
+        
+        // Validar se a data e hora selecionadas são válidas
+        const selectedDateTime = new Date(dataFormatada + 'T' + horaInput.value);
+        if (selectedDateTime < now) {
+            Swal.fire({
+                title: 'Data/Hora inválida',
+                text: 'Não é possível agendar uma entrevista no passado. Por favor, selecione uma data e hora futuras.',
+                icon: 'warning',
+                confirmButtonColor: '#3EB489'
+            });
+            dataInput.value = now.toLocaleDateString('pt-BR');
+            const nextHour = now.getHours() + 1;
+            horaInput.value = `${nextHour.toString().padStart(2, '0')}:00`;
+            return false;
+        }
+        
+        return true;
+    }
+
     function showInterviewModal(candidaturaId) {
         currentCandidaturaId = candidaturaId;
         document.getElementById('candidaturaId').value = candidaturaId;
         localPresencial.style.display = 'block';
         linkRemoto.style.display = 'none';
         modal.style.display = 'block';
+        
+        // Inicializar validação de data e hora
+        const dataInput = document.getElementById('entrevistaData');
+        const horaInput = document.getElementById('entrevistaHora');
+        
+        // Definir data mínima como hoje
+        const now = new Date();
+        dataInput.value = now.toLocaleDateString('pt-BR');
+        
+        // Definir a próxima hora disponível
+        const nextHour = now.getHours() + 1;
+        horaInput.value = `${nextHour.toString().padStart(2, '0')}:00`;
+        
+        // Adicionar event listeners para validação
+        dataInput.addEventListener('change', validateDateTime);
+        horaInput.addEventListener('change', validateDateTime);
+
+        // Adicionar máscara para formatação da data
+        dataInput.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, '');
+            if (value.length > 0) {
+                if (value.length <= 2) {
+                    value = value;
+                } else if (value.length <= 4) {
+                    value = value.slice(0, 2) + '/' + value.slice(2);
+                } else {
+                    value = value.slice(0, 2) + '/' + value.slice(2, 4) + '/' + value.slice(4, 8);
+                }
+            }
+            e.target.value = value;
+        });
         
         // Initialize map if not already initialized
         if (!map) {
@@ -1131,14 +1267,17 @@ try {
     async function handleInterviewSubmit(event) {
         event.preventDefault();
         
+        // Validar data e hora antes de enviar
+        if (!validateDateTime()) {
+            return;
+        }
+        
         const form = event.target;
         const formData = new FormData(form);
         
-        // Debug: Log dos dados do formulário
-        console.log('Dados do formulário:');
-        for (let pair of formData.entries()) {
-            console.log(pair[0] + ': ' + pair[1]);
-        }
+        // Converter a data para o formato correto antes de enviar
+        const dataDigitada = formData.get('data');
+        formData.set('data', formatarData(dataDigitada));
         
         try {
             const response = await fetch('agendar_entrevista.php', {
@@ -1147,20 +1286,35 @@ try {
             });
             
             const data = await response.json();
-            console.log('Resposta do servidor:', data);
             
             if (data.success) {
-                alert('Entrevista agendada com sucesso!');
-                location.reload();
+                Swal.fire({
+                    title: 'Sucesso!',
+                    text: 'Entrevista agendada com sucesso!',
+                    icon: 'success',
+                    confirmButtonColor: '#3EB489'
+                }).then(() => {
+                    location.reload();
+                });
             } else {
-                alert('Erro ao agendar entrevista: ' + (data.message || 'Erro desconhecido'));
+                Swal.fire({
+                    title: 'Erro!',
+                    text: 'Erro ao agendar entrevista: ' + (data.message || 'Erro desconhecido'),
+                    icon: 'error',
+                    confirmButtonColor: '#3EB489'
+                });
             }
         } catch (error) {
-            console.error('Erro completo:', error);
-            alert('Erro ao processar a requisição: ' + error);
+            Swal.fire({
+                title: 'Erro!',
+                text: 'Erro ao processar a requisição: ' + error,
+                icon: 'error',
+                confirmButtonColor: '#3EB489'
+            });
         }
     }
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.32/dist/sweetalert2.all.min.js"></script>
     <script src="../js/dropdown.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </body>
