@@ -28,9 +28,14 @@ $stmt->bind_param("i", $empresa_id);
 $stmt->execute();
 $result = $stmt->get_result();
 
+function padronizar_nome_subsidio($nome) {
+    return strtolower(str_replace(['-', ' '], '_', trim($nome)));
+}
+
 $subsidios = [];
 while ($row = $result->fetch_assoc()) {
-    $subsidios[$row['nome']] = $row;
+    $nome_padronizado = padronizar_nome_subsidio($row['nome']);
+    $subsidios[$nome_padronizado] = $row;
 }
 
 // Definir valores padrão se não existirem
@@ -67,4 +72,4 @@ echo json_encode([
 
 $stmt->close();
 $conn->close();
-?> 
+?>

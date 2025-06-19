@@ -4,7 +4,7 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// include 'config.php'; // Conexão com o banco de dados - REMOVIDO/COMENTADO
+
 include 'conexao.php'; // Inclui o arquivo de conexão com o banco de dados
 
 // Verifica se o usuário está logado e tem um ID válido

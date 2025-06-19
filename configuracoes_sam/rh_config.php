@@ -72,6 +72,11 @@ foreach ($bancos as $banco) {
     }
 }
 
+// ... existing code ...
+function padronizar_nome_subsidio($nome) {
+    return strtolower(str_replace(['-', ' '], '_', trim($nome)));
+}
+// ... existing code ...
 // Buscar status e valores dos subsídios opcionais
 $subs_ativos = [];
 $subs_valores = [];
@@ -81,8 +86,9 @@ $stmt->bind_param("i", $empresa_id);
 $stmt->execute();
 $result = $stmt->get_result();
 while ($row = $result->fetch_assoc()) {
-    $subs_ativos[$row['nome']] = (int)$row['ativo'];
-    $subs_valores[$row['nome']] = $row['valor_padrao'];
+    $nome_padronizado = padronizar_nome_subsidio($row['nome']);
+    $subs_ativos[$nome_padronizado] = (int)$row['ativo'];
+    $subs_valores[$nome_padronizado] = $row['valor_padrao'];
 }
 
 // Buscar subsídios obrigatórios
@@ -93,8 +99,10 @@ $stmt_subsidios->execute();
 $result_subsidios = $stmt_subsidios->get_result();
 $subsidios_valores = [];
 while ($row = $result_subsidios->fetch_assoc()) {
-    $subsidios_valores[$row['nome']] = $row['valor_padrao'];
+    $nome_padronizado = padronizar_nome_subsidio($row['nome']);
+    $subsidios_valores[$nome_padronizado] = $row['valor_padrao'];
 }
+// ... existing code ...
 
 // Definir valores padrão se não existirem
 if (!isset($subsidios_valores['noturno'])) $subsidios_valores['noturno'] = 35.00;
@@ -439,18 +447,9 @@ $conn->query($sql_popular_horarios);
                                     <td><?= htmlspecialchars($cargo['nome']) ?></td>
                                     <td><?= number_format($cargo['salario_base'], 2, ',', '.') ?> Kz</td>
                                     <td style="text-align:center;">
-                                        <div class="action-btns">
-                                            <form method="get" action="#" style="display:inline;">
-                                                <input type="hidden" name="acao" value="editar">
-                                                <input type="hidden" name="id" value="<?= $cargo['id'] ?>">
-                                                <button type="button" class="btn-edit"><i class="fa-solid fa-pen-to-square"></i> Editar</button>
-                                            </form>
-                                            <form method="get" action="gerenciar_cargos.php" style="display:inline;">
-                                                <input type="hidden" name="acao" value="excluir">
-                                                <input type="hidden" name="id" value="<?= $cargo['id'] ?>">
-                                                <button type="submit" class="btn-danger"><i class="fa-solid fa-trash"></i> Excluir</button>
-                                            </form>
-                                        </div>
+                                        <button class="btn btn-primary btn-sm" onclick="calcularSubsidios(<?= $cargo['id'] ?>)">
+                                            Calcular Subsídios
+                                        </button>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -1133,6 +1132,17 @@ if(sliderRisco && valorRiscoInfo) {
     });
 }
 
+// ... existing code ...
+// Função para atualizar valores na tabela
+async function atualizarValoresTabela(tipo, valor) {
+    console.log('Atualizando valores para:', tipo, valor);
+    const rows = document.querySelectorAll('tr[data-funcionario-id]');
+    for (const row of rows) {
+        const funcionarioId = row.dataset.funcionarioId;
+        await calcularSubsidios(funcionarioId);
+    }
+}
+
 // Função para salvar percentual do subsídio
 async function salvarPercentualSubsidio(tipo, valor) {
     try {
@@ -1151,34 +1161,19 @@ async function salvarPercentualSubsidio(tipo, valor) {
         const data = await response.json();
         if (data.success) {
             mostrarMensagem('success', 'Percentual atualizado com sucesso!');
+            
             // Atualizar o valor no slider e no texto
             const slider = document.getElementById(`slider-${tipo}`);
             const valorInfo = document.getElementById(`valor-${tipo}-info`);
             if (slider && valorInfo) {
-                slider.value = data.valor_padrao;
-                valorInfo.textContent = `${data.valor_padrao}%`;
+                slider.value = valor;
+                valorInfo.textContent = `${valor}%`;
             }
             
-            // Atualizar os valores na tabela
-            const rows = document.querySelectorAll('tr[data-funcionario-id]');
-            for (const row of rows) {
-                const funcionarioId = row.dataset.funcionarioId;
-                try {
-                    const response = await fetch(`calcular_subsidios.php?funcionario_id=${funcionarioId}&tipo=${tipo}`);
-                    const data = await response.json();
-                    
-                    if (data.success) {
-                        const horasCell = row.querySelector('.horas-extras');
-                        const valorCell = row.querySelector('.valor-calculado');
-                        if (horasCell && valorCell) {
-                            horasCell.textContent = formatarHoras(data.horas);
-                            valorCell.textContent = `${data.valor_calculado} Kz`;
-                        }
-                    }
-                } catch (error) {
-                    console.error(`Erro ao atualizar ${tipo}:`, error);
-                }
-            }
+            // Atualizar valores na tabela
+            await atualizarValoresTabela(tipo, valor);
+        } else if (data.error === "Subsídio não encontrado para atualização.") {
+            console.warn('Tentativa de atualizar subsídio inexistente:', tipo);
         } else {
             throw new Error(data.error || 'Erro ao atualizar percentual');
         }
@@ -1187,6 +1182,47 @@ async function salvarPercentualSubsidio(tipo, valor) {
     }
 }
 
+// Configurar os event listeners dos sliders
+document.addEventListener('DOMContentLoaded', function() {
+    // Carregar valores iniciais
+    carregarValoresSubsidios();
+
+    // Configurar sliders
+    const sliders = {
+        'noturno': { min: 20, max: 50 },
+        'horas_extras': { min: 20, max: 100 },
+        'risco': { min: 10, max: 30 }
+    };
+
+    // Configurar cada slider
+    Object.entries(sliders).forEach(([tipo, config]) => {
+        const slider = document.getElementById(`slider-${tipo}`);
+        const valorInfo = document.getElementById(`valor-${tipo}-info`);
+        
+        if (slider && valorInfo) {
+            // Configurar limites
+            slider.min = config.min;
+            slider.max = config.max;
+            
+            // Evento de input (enquanto arrasta)
+            slider.addEventListener('input', function() {
+                const valor = parseFloat(this.value);
+                valorInfo.textContent = `${valor}%`;
+                // Atualizar valores na tabela em tempo real
+                atualizarValoresTabela(tipo, valor);
+            });
+            
+            // Evento de change (quando solta)
+            slider.addEventListener('change', function() {
+                const valor = parseFloat(this.value);
+                salvarPercentualSubsidio(tipo, valor);
+            });
+        }
+    });
+});
+// ... existing code ...
+
+// ... existing code ...
 // Função para carregar valores dos subsídios
 async function carregarValoresSubsidios() {
     try {
@@ -1207,42 +1243,6 @@ async function carregarValoresSubsidios() {
         console.error('Erro ao carregar valores dos subsídios:', error);
     }
 }
-
-// Configurar os event listeners dos sliders
-document.addEventListener('DOMContentLoaded', function() {
-    // Carregar valores iniciais
-    carregarValoresSubsidios();
-
-    // Configurar sliders
-    const sliders = {
-        'noturno': { min: 20, max: 50 },
-        'horas_extras': { min: 20, max: 100 },
-        'risco': { min: 10, max: 30 }
-    };
-
-    Object.entries(sliders).forEach(([tipo, config]) => {
-        const slider = document.getElementById(`slider-${tipo}`);
-        const valorInfo = document.getElementById(`valor-${tipo}-info`);
-        
-        if (slider && valorInfo) {
-            slider.min = config.min;
-            slider.max = config.max;
-            
-            slider.addEventListener('input', function() {
-                const valor = this.value + '%';
-                valorInfo.textContent = valor;
-                valorInfo.style.transform = 'scale(1.1)';
-                setTimeout(() => {
-                    valorInfo.style.transform = 'scale(1)';
-                }, 150);
-            });
-            
-            slider.addEventListener('change', function() {
-                salvarPercentualSubsidio(tipo, this.value);
-            });
-        }
-    });
-});
 
 // Evento para switches dos subsídios opcionais
 const modalFuncionarios = new bootstrap.Modal(document.getElementById('modalFuncionariosSubsidio'));
@@ -1378,8 +1378,11 @@ function abrirModalFuncionariosSubs(tipo) {
             if (tipo === 'decimo_terceiro' || tipo === 'noturno' || tipo === 'horas_extras') {
                 let html = `<div style='font-weight:600; color:#3EB489; font-size:1.15em; margin-bottom:15px;'>Gerenciando Subsídio: ${nomeSubsidio}</div>`;
                 html += `<div class=\"table-responsive\" style=\"min-width:900px;\">`;
-                html += `<table class=\"table table-striped table-hover tabela-subsidio-modal\" style=\"border-radius:10px;overflow:hidden;min-width:900px;max-width:1200px;\">\n                  <thead style=\"background:#f5f5f5;\">\n                    <tr>\n                      <th style='padding:12px 18px;white-space:nowrap;'>Nome</th>\n                      <th style='padding:12px 18px;white-space:nowrap;'>Matrícula</th>\n                      <th style='padding:12px 18px;white-space:nowrap;'>Cargo</th>\n                      <th style='padding:12px 18px;white-space:nowrap;'>Departamento</th>\n                      <th style='padding:12px 18px;white-space:nowrap;'>${tipo === 'noturno' ? 'Horas Noturnas' : tipo === 'horas_extras' ? 'Horas Extras' : 'Meses'}</th>\n                      <th style='padding:12px 18px;white-space:nowrap;'>Salário Base</th>\n                      <th style='padding:12px 18px;white-space:nowrap;'>${tipo === 'decimo_terceiro' ? 'Valor 13º Mês' : tipo === 'noturno' ? 'Valor Noturno' : 'Valor Horas Extras'}</th>\n                    </tr>\n                  </thead>\n                  <tbody>`;
-                
+                html += `<table class=\"table table-striped table-hover tabela-subsidio-modal\" style=\"border-radius:10px;overflow:hidden;min-width:900px;max-width:1200px;\">\n                  <thead style=\"background:#f5f5f5;\">\n                    <tr>\n                      <th style='padding:12px 18px;white-space:nowrap;'>Nome</th>\n                      <th style='padding:12px 18px;white-space:nowrap;'>Matrícula</th>\n                      <th style='padding:12px 18px;white-space:nowrap;'>Cargo</th>\n                      <th style='padding:12px 18px;white-space:nowrap;'>Departamento</th>`;
+                if (tipo !== 'decimo_terceiro') {
+                    html += `\n                      <th style='padding:12px 18px;white-space:nowrap;'>${tipo === 'noturno' ? 'Horas Noturnas' : 'Horas Extras'}</th>`;
+                }
+                html += `\n                      <th style='padding:12px 18px;white-space:nowrap;'>Salário Base</th>\n                      <th style='padding:12px 18px;white-space:nowrap;'>${tipo === 'decimo_terceiro' ? 'Valor 13º Mês' : tipo === 'noturno' ? 'Valor Noturno' : 'Valor Horas Extras'}</th>\n                    </tr>\n                  </thead>\n                  <tbody>`;
                 // Função para formatar horas
                 function formatarHoras(horas) {
                     const horasInt = Math.floor(horas);
@@ -1388,15 +1391,25 @@ function abrirModalFuncionariosSubs(tipo) {
                 }
 
                 // Função para calcular valor das horas extras
-                function calcularValorHorasExtras(salarioBase, horasExtras, percentual) {
-                    const valorHoraNormal = parseFloat(salarioBase) / 160; // 160 horas mensais
+                async function calcularValorHorasExtras(salarioBase, horasExtras, percentual, funcionarioId) {
+                    // Buscar jornada diária do funcionário
+                    const response = await fetch(`get_horario_funcionario.php?funcionario_id=${funcionarioId}`);
+                    const data = await response.json();
+                    const jornadaDiaria = data.success ? data.horas_por_dia : 8; // 8 horas como fallback
+                    
+                    const valorHoraNormal = parseFloat(salarioBase) / (jornadaDiaria * 22); // 22 dias úteis no mês
                     const valorHoraExtra = valorHoraNormal * (1 + percentual/100);
                     return (valorHoraExtra * horasExtras).toFixed(2);
                 }
 
                 // Função para calcular valor do noturno
-                function calcularValorNoturno(salarioBase, horasNoturnas, percentual) {
-                    const valorHoraNormal = parseFloat(salarioBase) / 160;
+                async function calcularValorNoturno(salarioBase, horasNoturnas, percentual, funcionarioId) {
+                    // Buscar jornada diária do funcionário
+                    const response = await fetch(`get_horario_funcionario.php?funcionario_id=${funcionarioId}`);
+                    const data = await response.json();
+                    const jornadaDiaria = data.success ? data.horas_por_dia : 8; // 8 horas como fallback
+                    
+                    const valorHoraNormal = parseFloat(salarioBase) / (jornadaDiaria * 22); // 22 dias úteis no mês
                     const valorHoraNoturna = valorHoraNormal * (percentual/100);
                     return (valorHoraNoturna * horasNoturnas).toFixed(2);
                 }
@@ -1417,14 +1430,13 @@ function abrirModalFuncionariosSubs(tipo) {
                     }
                 }
 
-                funcionarios.forEach(f => {
+                (async () => {
+                    for (const f of funcionarios) {
                     let valorCalculado = 'N/A';
                     let salarioBaseStr = f.salario_base ? f.salario_base : '-';
                     let horas = 0;
-                    
                     if (f.salario_base) {
                         if (tipo === 'decimo_terceiro' && f.data_admissao) {
-                            // Cálculo do 13º mês
                             let dataParts = f.data_admissao.split('T')[0].split('-');
                             let admissao = new Date(dataParts[0], dataParts[1] - 1, dataParts[2]);
                             const agora = new Date();
@@ -1432,56 +1444,34 @@ function abrirModalFuncionariosSubs(tipo) {
                             if (meses > 12) meses = 12;
                             if (meses < 1) meses = 1;
                             valorCalculado = ((parseFloat(f.salario_base) * meses) / 12).toFixed(2);
-                        } else if (tipo === 'noturno') {
-                            // Buscar horas noturnas do funcionário
-                            fetch(`get_horas_noturnas.php?funcionario_id=${f.id}`)
-                                .then(response => response.json())
-                                .then(async data => {
+                        } else if (tipo === 'noturno' || tipo === 'horas_extras') {
+                                try {
+                                // Buscar valor calculado do backend centralizado
+                                const resp = await fetch(`calcular_subsidios.php?funcionario_id=${f.id}&tipo=${tipo}`);
+                                    const data = await resp.json();
                                     if (data.success) {
-                                        horas = parseFloat(data.horas_noturnas) || 0;
-                                        const percentual = await obterPercentualSubsidio('noturno');
-                                        valorCalculado = calcularValorNoturno(f.salario_base, horas, percentual);
-                                        const row = document.querySelector(`tr[data-funcionario-id=\"${f.id}\"]`);
-                                        if (row) {
-                                            row.querySelector('.horas-extras').textContent = formatarHoras(horas);
-                                            row.querySelector('.valor-calculado').textContent = `${valorCalculado} Kz`;
-                                        }
+                                    horas = parseFloat(data.horas) || 0;
+                                    valorCalculado = data.valor_calculado;
                                     }
-                                })
-                                .catch(error => console.error('Erro ao buscar horas noturnas:', error));
-                        } else if (tipo === 'horas_extras') {
-                            // Buscar horas extras do funcionário
-                            fetch(`get_horas_extras.php?funcionario_id=${f.id}`)
-                                .then(response => response.json())
-                                .then(async data => {
-                                    if (data.success) {
-                                        horas = parseFloat(data.horas_extras) || 0;
-                                        const percentual = await obterPercentualSubsidio('horas_extras');
-                                        valorCalculado = calcularValorHorasExtras(f.salario_base, horas, percentual);
-                                        const row = document.querySelector(`tr[data-funcionario-id=\"${f.id}\"]`);
-                                        if (row) {
-                                            row.querySelector('.horas-extras').textContent = formatarHoras(horas);
-                                            row.querySelector('.valor-calculado').textContent = `${valorCalculado} Kz`;
-                                        }
-                                    }
-                                })
-                                .catch(error => console.error('Erro ao buscar horas extras:', error));
+                            } catch (error) { console.error('Erro ao buscar valor do subsídio:', error); }
                         }
                     }
-                    
                     html += `<tr data-funcionario-id=\"${f.id}\">\n`
                         + `<td style='padding:8px 12px;'>${f.nome}</td>`
                         + `<td style='padding:8px 12px;'>${f.num_mecanografico}</td>`
                         + `<td style='padding:8px 12px;'>${f.cargo}</td>`
-                        + `<td style='padding:8px 12px;'>${f.departamento}</td>`
-                        + `<td style='padding:8px 12px;' class="horas-extras">${formatarHoras(horas)}</td>`
-                        + `<td style='padding:8px 12px;'>${salarioBaseStr}</td>`
+                        + `<td style='padding:8px 12px;'>${f.departamento}</td>`;
+                    if (tipo !== 'decimo_terceiro') {
+                        html += `<td style='padding:8px 12px;' class="horas-extras">${formatarHoras(horas)}</td>`;
+                    }
+                    html += `<td style='padding:8px 12px;'>${salarioBaseStr}</td>`
                         + `<td style='padding:8px 12px;' class="valor-calculado">${valorCalculado} Kz</td>`
                         + `</tr>`;
-                });
+                    }
                 html += '</tbody></table>';
                 html += '</div>';
                 lista.innerHTML = html;
+                })();
                 return;
             }
 
@@ -1808,7 +1798,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// ... existing code ...
 // Função para atualizar valores dos subsídios
 async function atualizarValoresSubsidios() {
     const rows = document.querySelectorAll('tr[data-funcionario-id]');
@@ -1836,15 +1825,15 @@ async function atualizarValoresSubsidios() {
 document.querySelectorAll('.custom-slider').forEach(slider => {
     slider.addEventListener('change', async function() {
         const tipo = this.id.replace('slider-', '');
-        await salvarPercentualSubsidio(tipo, this.value);
+        const valor = this.value;
+        await salvarPercentualSubsidio(tipo, valor);
         // Atualizar os valores na tabela
         const rows = document.querySelectorAll('tr[data-funcionario-id]');
         for (const row of rows) {
             const funcionarioId = row.dataset.funcionarioId;
             try {
-                const response = await fetch(`calcular_subsidios.php?funcionario_id=${funcionarioId}&tipo=${tipo}`);
+                const response = await fetch(`calcular_subsidios.php?funcionario_id=${funcionarioId}&tipo=${tipo}&percentual=${valor}`);
                 const data = await response.json();
-                
                 if (data.success) {
                     const horasCell = row.querySelector('.horas-extras');
                     const valorCell = row.querySelector('.valor-calculado');
@@ -1857,6 +1846,111 @@ document.querySelectorAll('.custom-slider').forEach(slider => {
                 console.error(`Erro ao atualizar ${tipo}:`, error);
             }
         }
+    });
+});
+
+// Função para calcular subsídios
+async function calcularSubsidios(funcionarioId) {
+    try {
+        // Buscar jornada diária do funcionário
+        const responseHorario = await fetch(`get_horario_funcionario.php?funcionario_id=${funcionarioId}`);
+        const dataHorario = await responseHorario.json();
+        
+        if (!dataHorario.success) {
+            console.error('Erro ao buscar horário:', dataHorario.error);
+            return;
+        }
+        
+        const jornadaDiaria = dataHorario.horas_por_dia || 8;
+        console.log('Jornada diária:', jornadaDiaria);
+        
+        // Buscar percentual atual
+        const percentualNoturno = document.getElementById('percentual_noturno').value;
+        console.log('Percentual noturno:', percentualNoturno);
+                
+        // Calcular subsídio noturno
+        const responseNoturno = await fetch(`calcular_subsidios.php?funcionario_id=${funcionarioId}&tipo=noturno&percentual=${percentualNoturno}&jornada_diaria=${jornadaDiaria}`);
+        const dataNoturno = await responseNoturno.json();
+        
+        if (!dataNoturno.success) {
+            console.error('Erro ao calcular subsídio noturno:', dataNoturno.error);
+            return;
+        }
+        
+        console.log('Dados do subsídio noturno:', dataNoturno);
+        
+        // Atualizar células da tabela
+        const row = document.querySelector(`tr[data-funcionario-id="${funcionarioId}"]`);
+        if (row) {
+            const horasNoturnasCell = row.querySelector('.horas-noturnas');
+            const valorNoturnoCell = row.querySelector('.valor-noturno');
+            
+            if (horasNoturnasCell && valorNoturnoCell) {
+                horasNoturnasCell.textContent = dataNoturno.horas.toFixed(2);
+                valorNoturnoCell.textContent = dataNoturno.valor_calculado.toFixed(2) + ' Kz';
+            }
+        }
+    } catch (error) {
+        console.error('Erro ao calcular subsídios:', error);
+    }
+}
+
+// Adicionar event listener para o slider de percentual noturno
+document.getElementById('percentual_noturno').addEventListener('input', function() {
+    const percentual = this.value;
+    document.getElementById('valor_percentual_noturno').textContent = percentual + '%';
+    
+    // Recalcular subsídios para todos os funcionários
+    const funcionarios = document.querySelectorAll('tr[data-funcionario-id]');
+    funcionarios.forEach(row => {
+        const funcionarioId = row.getAttribute('data-funcionario-id');
+        calcularSubsidios(funcionarioId);
+    });
+});
+
+// Atualizar valores quando o slider mudar
+document.getElementById('slider-noturno').addEventListener('input', function() {
+    const valor = this.value;
+    document.getElementById('valor-nocturno-info').textContent = `${valor}%`;
+    // Recalcular todos os valores
+    const rows = document.querySelectorAll('tr[data-funcionario-id]');
+    rows.forEach(row => {
+        const funcionarioId = row.dataset.funcionarioId;
+        calcularSubsidios(funcionarioId);
+    });
+});
+
+// Inicializar cálculos quando a página carregar
+document.addEventListener('DOMContentLoaded', function() {
+    const rows = document.querySelectorAll('tr[data-funcionario-id]');
+    rows.forEach(row => {
+        const funcionarioId = row.dataset.funcionarioId;
+        calcularSubsidios(funcionarioId);
+    });
+});
+
+// Função para atualizar todos os cálculos quando um slider muda
+function atualizarCalculos() {
+    const rows = document.querySelectorAll('tr[data-funcionario-id]');
+    rows.forEach(row => {
+        const funcionarioId = row.dataset.funcionarioId;
+        calcularSubsidios(funcionarioId);
+    });
+}
+
+// Adicionar event listeners para os sliders
+document.addEventListener('DOMContentLoaded', function() {
+    const sliders = document.querySelectorAll('input[type="range"]');
+    sliders.forEach(slider => {
+        slider.addEventListener('input', function() {
+            const tipo = this.id.replace('slider-', '');
+            const valor = this.value;
+            const valorInfo = document.getElementById(`valor-${tipo}-info`);
+            if (valorInfo) {
+                valorInfo.textContent = `${valor}%`;
+            }
+            atualizarCalculos();
+        });
     });
 });
 // ... existing code ...

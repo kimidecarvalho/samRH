@@ -28,45 +28,15 @@ if (!$data) {
     die(json_encode(['success' => false, 'error' => 'Dados inválidos']));
 }
 
-$id = $data['id'] ?? null;
 $tipo = $data['tipo'] ?? '';
 $valor_padrao = $data['valor_padrao'] ?? null;
-$ativo = $data['ativo'] ?? null;
 
 if (empty($tipo)) {
     die(json_encode(['success' => false, 'error' => 'Tipo de subsídio não especificado']));
 }
 
-if ($id) {
-    // Atualizar usando o ID
-    $sql = "UPDATE subsidios_padrao SET ";
-    $params = [];
-    $types = "";
-    
-    if ($valor_padrao !== null) {
-        $sql .= "valor_padrao = ?, ";
-        $params[] = $valor_padrao;
-        $types .= "d";
-    }
-    
-    if ($ativo !== null) {
-        $sql .= "ativo = ?, ";
-        $params[] = $ativo;
-        $types .= "i";
-    }
-    
-    $sql = rtrim($sql, ", ");
-    $sql .= " WHERE id = ? AND empresa_id = ?";
-    
-    $params[] = $id;
-    $params[] = $empresa_id;
-    $types .= "ii";
-    
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param($types, ...$params);
-} else {
     // Verificar se o subsídio existe
-    $sql_check = "SELECT id FROM subsidios_padrao WHERE empresa_id = ? AND nome = ?";
+$sql_check = "SELECT id FROM subsidios_padrao WHERE empresa_id = ? AND nome = ? FOR UPDATE";
     $stmt_check = $conn->prepare($sql_check);
     $stmt_check->bind_param("is", $empresa_id, $tipo);
     $stmt_check->execute();
@@ -74,46 +44,34 @@ if ($id) {
     $subsidio = $result_check->fetch_assoc();
 
     if (!$subsidio) {
-        // Se não existir, criar o subsídio
-        $sql = "INSERT INTO subsidios_padrao (empresa_id, nome, tipo, valor_padrao, unidade, ativo) VALUES (?, ?, 'obrigatorio', ?, 'percentual', 1)";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("isd", $empresa_id, $tipo, $valor_padrao);
-    } else {
-        // Se existir, atualizar
-        $sql = "UPDATE subsidios_padrao SET ";
-        $params = [];
-        $types = "";
-        
-        if ($valor_padrao !== null) {
-            $sql .= "valor_padrao = ?, ";
-            $params[] = $valor_padrao;
-            $types .= "d";
-        }
-        
-        if ($ativo !== null) {
-            $sql .= "ativo = ?, ";
-            $params[] = $ativo;
-            $types .= "i";
-        }
-        
-        $sql = rtrim($sql, ", ");
-        $sql .= " WHERE empresa_id = ? AND nome = ?";
-        
-        $params[] = $empresa_id;
-        $params[] = $tipo;
-        $types .= "is";
-        
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param($types, ...$params);
-    }
+    die(json_encode(['success' => false, 'error' => 'Subsídio não encontrado. Apenas subsídios existentes podem ser atualizados.']));
 }
 
+// Atualizar o subsídio existente
+$sql = "UPDATE subsidios_padrao SET valor_padrao = ? WHERE id = ? AND empresa_id = ?";
+        $stmt = $conn->prepare($sql);
+$stmt->bind_param("dii", $valor_padrao, $subsidio['id'], $empresa_id);
+
 if ($stmt->execute()) {
-    echo json_encode(['success' => true]);
+    // Buscar o valor atualizado
+    $sql_get = "SELECT valor_padrao FROM subsidios_padrao WHERE id = ?";
+    $stmt_get = $conn->prepare($sql_get);
+    $stmt_get->bind_param("i", $subsidio['id']);
+    $stmt_get->execute();
+    $result_get = $stmt_get->get_result();
+    $updated = $result_get->fetch_assoc();
+    
+    echo json_encode([
+        'success' => true,
+        'valor_padrao' => floatval($updated['valor_padrao'])
+    ]);
 } else {
-    echo json_encode(['success' => false, 'error' => $stmt->error]);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Erro ao atualizar subsídio: ' . $stmt->error
+    ]);
 }
 
 $stmt->close();
 $conn->close();
-?> 
+?>

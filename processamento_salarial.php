@@ -6,6 +6,7 @@ if (session_status() == PHP_SESSION_NONE) {
 
 include 'protect.php'; // Protege a página para usuários autenticados
 include 'config.php'; // Conexão com o banco de dados
+include 'configuracoes_sam/funcoes_calculo_subsidios.php';
 
 // Verifica se o usuário está logado e tem um ID válido
 if (!isset($_SESSION['id_adm'])) {
@@ -118,40 +119,6 @@ function calcularIRT($base) {
     return 2342248 + ($base - 10000000) * 0.25;
 }
 
-// Função para calcular horas noturnas
-function calcularHorasNoturnas($hora_entrada, $hora_saida) {
-    $entrada = strtotime($hora_entrada);
-    $saida = strtotime($hora_saida);
-    
-    // Se a saída for no dia seguinte
-    if ($saida < $entrada) {
-        $saida = strtotime('+1 day', $saida);
-    }
-    
-    $horas_noturnas = 0;
-    $inicio_noturno = strtotime('20:00:00');
-    $fim_noturno = strtotime('06:00:00');
-    
-    // Ajusta o fim do período noturno para o dia seguinte
-    $fim_noturno = strtotime('+1 day', $fim_noturno);
-    
-    // Calcula as horas noturnas
-    if ($entrada <= $inicio_noturno && $saida >= $fim_noturno) {
-        // Trabalha todo o período noturno
-        $horas_noturnas = 10; // 20h às 6h = 10 horas
-    } else {
-        // Calcula as horas parciais
-        $inicio_periodo = max($entrada, $inicio_noturno);
-        $fim_periodo = min($saida, $fim_noturno);
-        
-        if ($inicio_periodo < $fim_periodo) {
-            $horas_noturnas = ($fim_periodo - $inicio_periodo) / 3600;
-        }
-    }
-    
-    return $horas_noturnas;
-}
-
 // Função para calcular 13º mês
 function calcularDecimoTerceiro($salario_base, $meses_trabalhados) {
     return ($salario_base / 12) * $meses_trabalhados;
@@ -173,44 +140,71 @@ foreach ($funcionarios as $f) {
         }
     }
     // Buscar horário do funcionário
-    $sql_horario = "SELECT * FROM horarios_funcionarios WHERE funcionario_id = ?";
+    $sql_horario = "SELECT hora_entrada, hora_saida FROM horarios_funcionarios WHERE funcionario_id = ?";
     $stmt_horario = $conn->prepare($sql_horario);
     $stmt_horario->bind_param('i', $id_fun);
     $stmt_horario->execute();
-    $horario = $stmt_horario->get_result()->fetch_assoc();
+    $res_horario = $stmt_horario->get_result();
+    $horario = $res_horario->fetch_assoc();
     $hora_entrada = $horario ? $horario['hora_entrada'] : '08:00:00';
     $hora_saida = $horario ? $horario['hora_saida'] : '16:00:00';
-    $horas_por_dia = (strtotime($hora_saida) - strtotime($hora_entrada)) / 3600;
-    $qhe = $dias_uteis_mes * $horas_por_dia;
+    $jornada_diaria = (strtotime($hora_saida) - strtotime($hora_entrada)) / 3600;
+    if ($jornada_diaria <= 0) $jornada_diaria = 8; // fallback
 
     // Buscar registros de ponto do mês
-    $sql_ponto = "SELECT * FROM registros_ponto WHERE funcionario_id = ? AND data LIKE ?";
-    $mes_like = "$mes_referencia%";
+    $sql_ponto = "SELECT * FROM registros_ponto WHERE funcionario_id = ? AND MONTH(data) = ? AND YEAR(data) = ?";
+    $mes_num = date('m', strtotime($mes_referencia.'-01'));
+    $ano_num = date('Y', strtotime($mes_referencia.'-01'));
     $stmt_ponto = $conn->prepare($sql_ponto);
-    $stmt_ponto->bind_param('is', $id_fun, $mes_like);
+    $stmt_ponto->bind_param('iii', $id_fun, $mes_num, $ano_num);
     $stmt_ponto->execute();
     $result_ponto = $stmt_ponto->get_result();
+    $registros_ponto = [];
     $faltas = 0;
-    $horas_extras = 0;
     $dias_com_ponto = [];
     $hoje = date('Y-m-d');
     while ($p = $result_ponto->fetch_assoc()) {
-        // Só considera pontos até hoje
+        $registros_ponto[] = $p;
         if ($p['data'] <= $hoje) {
             $dias_com_ponto[$p['data']] = true;
-        }
-        if ($p['hora_entrada'] && $p['hora_saida']) {
-            $h_entrada = strtotime($p['hora_entrada']);
-            $h_saida = strtotime($p['hora_saida']);
-            $horas_trabalhadas = ($h_saida - $h_entrada) / 3600;
-            if ($horas_trabalhadas > $horas_por_dia) {
-                $horas_extras += ($horas_trabalhadas - $horas_por_dia);
-            }
         }
     }
     // Faltas = dias úteis até hoje - dias com ponto
     $faltas = $dias_uteis_ate_hoje - count($dias_com_ponto);
     if ($faltas < 0) $faltas = 0;
+    // Calcular horas extras e noturnas usando funções centralizadas
+    $horas_extras = calcularHorasExtrasFuncionario($registros_ponto, $jornada_diaria);
+    $horas_extras_h = floor($horas_extras);
+    $horas_extras_m = round(($horas_extras - $horas_extras_h) * 60);
+    $horas_extras_fmt = sprintf('%d:%02d', $horas_extras_h, $horas_extras_m);
+
+    $horas_noturnas = calcularHorasNoturnasFuncionario($registros_ponto);
+    $horas_noturnas_h = floor($horas_noturnas);
+    $horas_noturnas_m = round(($horas_noturnas - $horas_noturnas_h) * 60);
+    $horas_noturnas_fmt = sprintf('%d:%02d', $horas_noturnas_h, $horas_noturnas_m);
+    $horas_noturnas_decimal = $horas_noturnas; // Manter o valor decimal original para cálculos
+
+    // Buscar percentuais
+    $sql_he = "SELECT valor_padrao FROM subsidios_padrao WHERE empresa_id = ? AND nome = 'horas_extras'";
+    $stmt_he = $conn->prepare($sql_he);
+    $stmt_he->bind_param('i', $empresa_id);
+    $stmt_he->execute();
+    $result_he = $stmt_he->get_result();
+    $he = $result_he->fetch_assoc();
+    $percentual_he = $he ? floatval($he['valor_padrao']) : 50.00;
+
+    $sql_noturno = "SELECT valor_padrao FROM subsidios_padrao WHERE empresa_id = ? AND nome = 'noturno'";
+    $stmt_noturno = $conn->prepare($sql_noturno);
+    $stmt_noturno->bind_param('i', $empresa_id);
+    $stmt_noturno->execute();
+    $result_noturno = $stmt_noturno->get_result();
+    $noturno = $result_noturno->fetch_assoc();
+    $percentual_noturno = $noturno ? floatval($noturno['valor_padrao']) : 35.00;
+
+    // Calcular valores
+    $valor_hora_extra = calcularValorHoraExtra($f['salario_base'], $percentual_he, $jornada_diaria);
+    $valor_total_phe = calcularValorTotalHorasExtras($valor_hora_extra, $horas_extras);
+    $valor_subsidio_noturno = calcularValorNoturno($f['salario_base'], $horas_noturnas_decimal, $percentual_noturno, $jornada_diaria, $id_fun);
 
     // Buscar subsídios do funcionário
     $sql_subs = "SELECT sp.nome, sp.valor_padrao, sf.valor FROM subsidios_funcionarios sf JOIN subsidios_padrao sp ON sf.subsidio_id = sp.id WHERE sf.funcionario_id = ? AND sf.ativo = 1";
@@ -250,44 +244,16 @@ foreach ($funcionarios as $f) {
     // Cálculos intermediários
     $salario_base = floatval($f['salario_base']);
     $salario_dia = $dias_uteis_mes > 0 ? $salario_base / $dias_uteis_mes : 0;
-    $salario_hora = ($dias_uteis_mes * $horas_por_dia) > 0 ? $salario_base / ($dias_uteis_mes * $horas_por_dia) : 0;
+    $horas_mensais = $jornada_diaria * $dias_uteis_mes;
+    $salario_hora = $horas_mensais > 0 ? $salario_base / $horas_mensais : 0;
     
-    // Buscar percentual do subsídio de horas extras
-    $sql_he = "SELECT valor_padrao FROM subsidios_padrao WHERE empresa_id = ? AND nome = 'horas_extras'";
-    $stmt_he = $conn->prepare($sql_he);
-    $stmt_he->bind_param('i', $empresa_id);
-    $stmt_he->execute();
-    $result_he = $stmt_he->get_result();
-    $he = $result_he->fetch_assoc();
-    $percentual_he = $he ? floatval($he['valor_padrao']) : 50.00;
-    
-    $valor_hora_extra = $salario_hora * (1 + $percentual_he / 100);
-    $valor_total_phe = $valor_hora_extra * $horas_extras;
-    $salario_iliquido = $salario_base + $total_subs + $valor_total_phe;
+    $valor_hora_normal = $salario_hora;
+    $salario_iliquido = $salario_base + $total_subs + $valor_total_phe + $valor_subsidio_noturno;
     $iss = $salario_base * 0.03;
     $desconto_faltas = $salario_dia * $faltas;
     $irt = calcularIRT($salario_base);
     $total_descontos = $iss + $desconto_faltas + $irt;
     $salario_liquido = $salario_iliquido - $total_descontos;
-
-    // Converter horas_extras para HH:MM
-    $horas_extras_h = floor($horas_extras);
-    $horas_extras_m = round(($horas_extras - $horas_extras_h) * 60);
-    $horas_extras_fmt = sprintf('%d:%02d', $horas_extras_h, $horas_extras_m);
-
-    // Calcular horas noturnas
-    $horas_noturnas = calcularHorasNoturnas($hora_entrada, $hora_saida);
-    
-    // Buscar percentual do subsídio noturno
-    $sql_noturno = "SELECT valor_padrao FROM subsidios_padrao WHERE empresa_id = ? AND nome = 'noturno'";
-    $stmt_noturno = $conn->prepare($sql_noturno);
-    $stmt_noturno->bind_param('i', $empresa_id);
-    $stmt_noturno->execute();
-    $result_noturno = $stmt_noturno->get_result();
-    $noturno = $result_noturno->fetch_assoc();
-    $percentual_noturno = $noturno ? floatval($noturno['valor_padrao']) : 35.00;
-    
-    $valor_subsidio_noturno = $horas_noturnas * $salario_hora * ($percentual_noturno / 100);
     
     // Calcular 13º mês
     $meses_trabalhados = 12; // Você pode ajustar isso baseado na data de admissão
@@ -317,10 +283,11 @@ foreach ($funcionarios as $f) {
         'cargo' => $cargo_nome,
         'salario_base' => $salario_base,
         'dias_uteis' => $dias_uteis_mes,
-        'horas_por_dia' => $horas_por_dia,
-        'qhe' => $qhe,
+        'horas_por_dia' => $jornada_diaria,
+        'qhe' => $dias_uteis_mes * $jornada_diaria,
         'faltas' => $faltas,
         'horas_extras' => $horas_extras_fmt,
+        'horas_noturnas' => $horas_noturnas_fmt,
         'salario_dia' => $salario_dia,
         'salario_hora' => $salario_hora,
         'valor_hora_extra' => $valor_hora_extra,
@@ -333,7 +300,6 @@ foreach ($funcionarios as $f) {
         'irt' => $irt,
         'total_descontos' => $total_descontos,
         'salario_liquido' => $salario_liquido,
-        'horas_noturnas' => $horas_noturnas,
         'valor_subsidio_noturno' => $valor_subsidio_noturno,
         'valor_decimo_terceiro' => $valor_decimo_terceiro
     ];
@@ -640,17 +606,33 @@ while ($row = $result->fetch_assoc()) {
             <table class="tabela-funcionarios">
                 <thead>
                     <tr>
+                        <!-- Informações do Colaborador -->
                         <th colspan="4">Informações do Colaborador</th>
+                        
+                        <!-- Jornada de Trabalho -->
                         <th colspan="3">Jornada de Trabalho</th>
-                        <th colspan="3">Subsídios</th>
-                        <th colspan="2">Horas Extras</th>
-                        <th colspan="1">Total Bruto</th>
+                        
+                        <!-- Subsídios Base -->
+                        <th colspan="2">Subsídios Base</th>
+                        
+                        <!-- Horas Extras -->
+                        <th colspan="3">Horas Extras</th>
+                        
+                        <!-- Horas Noturnas -->
+                        <th colspan="3">Horas Noturnas</th>
+                        
+                        <!-- Total Bruto -->
+                        <th>Total Bruto</th>
+                        
+                        <!-- Descontos -->
                         <th colspan="4">Descontos</th>
-                        <th colspan="1">Resultado Final</th>
+                        
+                        <!-- Resultado Final -->
+                        <th>Resultado Final</th>
                     </tr>
                     <tr>
                         <!-- Informações do Colaborador -->
-                        <th>Nº Matrícula</th>
+                        <th>Nº Mecanográfico</th>
                         <th>Nome</th>
                         <th>Cargo</th>
                         <th>Salário Base</th>
@@ -658,23 +640,28 @@ while ($row = $result->fetch_assoc()) {
                         <!-- Jornada de Trabalho -->
                         <th>Dias Úteis</th>
                         <th>Horas/Dia</th>
-                        <th>Faltas (dias)</th>
+                        <th>QHE</th>
                         
-                        <!-- Subsídios -->
-                        <th>Lista de Subsídios</th>
+                        <!-- Subsídios Base -->
+                        <th>Subsídios</th>
                         <th>Total Subsídios</th>
-                        <th>Salário + Subsídios</th>
                         
                         <!-- Horas Extras -->
-                        <th>Horas Extras</th>
-                        <th>Valor Total PHE</th>
+                        <th>Qtd. Horas Extras</th>
+                        <th>Valor/Hora Extra</th>
+                        <th>Subsídio HE</th>
+                        
+                        <!-- Horas Noturnas -->
+                        <th>Qtd. Horas Noturnas</th>
+                        <th>Valor/Hora Noturna</th>
+                        <th>Subsídio Noturno</th>
                         
                         <!-- Total Bruto -->
                         <th>Salário Ilíquido</th>
                         
                         <!-- Descontos -->
                         <th>ISS (3%)</th>
-                        <th>Desconto Faltas</th>
+                        <th>Faltas</th>
                         <th>IRT</th>
                         <th>Total Descontos</th>
                         
@@ -701,15 +688,14 @@ while ($row = $result->fetch_assoc()) {
                         <!-- Jornada de Trabalho -->
                         <td><?= $d['dias_uteis'] ?></td>
                         <td><?= $d['horas_por_dia'] ?></td>
-                        <td><?= $d['faltas'] ?></td>
+                        <td><?= $d['qhe'] ?></td>
                         
-                        <!-- Subsídios -->
+                        <!-- Subsídios Base -->
                         <td>
                             <?php foreach ($d['subs_list'] as $subs): ?>
                                 <?php
                                     $isObrigatorio = in_array($subs, ['noturno', 'horas_extras', 'risco', 'decimo_terceiro']);
                                     $valor = 0;
-                                    // Determina o valor do subsídio para o funcionário atual
                                     if ($subs === 'noturno') {
                                         $valor = isset($d['valor_subsidio_noturno']) ? $d['valor_subsidio_noturno'] : 0;
                                     } elseif ($subs === 'horas_extras') {
@@ -732,11 +718,16 @@ while ($row = $result->fetch_assoc()) {
                             <?php endforeach; ?>
                         </td>
                         <td><?= number_format($d['total_subs'], 2, ',', '.') ?></td>
-                        <td><?= number_format($d['salario_base'] + $d['total_subs'], 2, ',', '.') ?></td>
                         
                         <!-- Horas Extras -->
                         <td><?= $d['horas_extras'] ?></td>
+                        <td><?= number_format($d['valor_hora_extra'], 2, ',', '.') ?></td>
                         <td><?= number_format($d['valor_total_phe'], 2, ',', '.') ?></td>
+                        
+                        <!-- Horas Noturnas -->
+                        <td><?= $d['horas_noturnas'] ?></td>
+                        <td><?= number_format($d['salario_hora'] * (1 + ($percentual_noturno / 100)), 2, ',', '.') ?></td>
+                        <td><?= number_format($d['valor_subsidio_noturno'], 2, ',', '.') ?></td>
                         
                         <!-- Total Bruto -->
                         <td><?= number_format($d['salario_iliquido'], 2, ',', '.') ?></td>
