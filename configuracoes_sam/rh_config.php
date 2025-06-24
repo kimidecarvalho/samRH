@@ -1,6 +1,7 @@
 <?php
 session_start();
 include('../config.php');
+include('inicializar_subsidios.php'); // Incluir o novo script
 
 if (!isset($_SESSION['id_adm'])) {
     die("Acesso negado");
@@ -20,6 +21,9 @@ if (!$admin) {
 }
 
 $empresa_id = $admin['id_empresa'];
+
+// Chamar a função para inicializar os subsídios para a empresa atual
+inicializar_subsidios_empresa($empresa_id, $conn);
 
 // Buscar departamentos
 $sql_departamentos = "SELECT id, nome FROM departamentos WHERE empresa_id = ? ORDER BY nome";

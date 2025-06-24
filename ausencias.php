@@ -21,6 +21,10 @@ if (!isset($_SESSION['id_empresa'])) {
 
 $empresa_id = $_SESSION['id_empresa']; // Recupera o id_empresa da sessão
 
+// Inicializar políticas de ausência para a empresa, se necessário
+require_once __DIR__ . '/configuracoes_sam/politicas_ausencia.php';
+inicializar_politicas_ausencia_empresa($empresa_id, $conn);
+
 // Verificar se a tabela ausencias existe, senão criar
 $sql_check_ausencias_table = "SHOW TABLES LIKE 'ausencias'";
 $result_check_ausencias_table = mysqli_query($conn, $sql_check_ausencias_table);
@@ -130,10 +134,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['registrar_ausencia'])
                    '$dias_uteis', '$justificacao', '$observacoes', NOW())";
     
     if (mysqli_query($conn, $sql_insert)) {
-        echo "<script>alert('Ausência registrada com sucesso!');</script>";
+        $_SESSION['mensagem_sucesso'] = 'Ausência registrada com sucesso!';
     } else {
-        echo "<script>alert('Erro ao registrar ausência: " . mysqli_error($conn) . "');</script>";
+        $_SESSION['mensagem_erro'] = 'Erro ao registrar ausência: ' . mysqli_error($conn);
     }
+    
+    // Redirecionar para evitar o aviso de refresh
+    header('Location: ausencias.php');
+    exit;
+}
+
+// Processamento do formulário de edição de ausência
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['editar_ausencia'])) {
+    $ausencia_id = mysqli_real_escape_string($conn, $_POST['ausencia_id']);
+    $funcionario_id = mysqli_real_escape_string($conn, $_POST['funcionario_id']);
+    $tipo_ausencia = mysqli_real_escape_string($conn, $_POST['tipo_ausencia']);
+    $data_inicio = mysqli_real_escape_string($conn, $_POST['data_inicio']);
+    $data_fim = mysqli_real_escape_string($conn, $_POST['data_fim']);
+    $justificacao = mysqli_real_escape_string($conn, $_POST['justificacao']);
+    $observacoes = mysqli_real_escape_string($conn, $_POST['observacoes']);
+    
+    // Cálculo de dias úteis entre as datas
+    $dias_uteis = calcularDiasUteis($data_inicio, $data_fim);
+    
+    // Atualizar ausência
+    $sql_update = "UPDATE ausencias SET 
+                   funcionario_id = '$funcionario_id',
+                   tipo_ausencia = '$tipo_ausencia',
+                   data_inicio = '$data_inicio',
+                   data_fim = '$data_fim',
+                   dias_uteis = '$dias_uteis',
+                   justificacao = '$justificacao',
+                   observacoes = '$observacoes'
+                   WHERE id = '$ausencia_id' AND empresa_id = '$empresa_id'";
+    
+    if (mysqli_query($conn, $sql_update)) {
+        $_SESSION['mensagem_sucesso'] = 'Ausência atualizada com sucesso!';
+    } else {
+        $_SESSION['mensagem_erro'] = 'Erro ao atualizar ausência: ' . mysqli_error($conn);
+    }
+    
+    // Redirecionar para evitar o aviso de refresh
+    header('Location: ausencias.php');
+    exit;
+}
+
+// Processamento da exclusão de ausência
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['excluir_ausencia'])) {
+    $ausencia_id = mysqli_real_escape_string($conn, $_POST['ausencia_id']);
+    
+    // Excluir ausência
+    $sql_delete = "DELETE FROM ausencias WHERE id = '$ausencia_id' AND empresa_id = '$empresa_id'";
+    
+    if (mysqli_query($conn, $sql_delete)) {
+        $_SESSION['mensagem_sucesso'] = 'Ausência excluída com sucesso!';
+    } else {
+        $_SESSION['mensagem_erro'] = 'Erro ao excluir ausência: ' . mysqli_error($conn);
+    }
+    
+    // Redirecionar para evitar o aviso de refresh
+    header('Location: ausencias.php');
+    exit;
 }
 
 // Função para calcular dias úteis (excluindo fins de semana)
@@ -242,65 +303,56 @@ $sql = "SELECT a.id, a.funcionario_id, f.nome AS nome_funcionario, f.num_mecanog
 
 $result = mysqli_query($conn, $sql);
 
-// Consulta para obter dados para o gráfico de ausências por departamento
-// Primeiro, vamos verificar se há ausências registradas
-$sql_check_ausencias = "SELECT COUNT(*) as total FROM ausencias WHERE empresa_id = $empresa_id";
-$result_check_ausencias = mysqli_query($conn, $sql_check_ausencias);
-$total_ausencias_geral = mysqli_fetch_assoc($result_check_ausencias)['total'];
-
-if ($total_ausencias_geral > 0) {
-    // Se há ausências, usar a consulta original
-    $sql_grafico_dept = "SELECT 
-                            COALESCE(f.departamento, 'Sem Departamento') as departamento, 
-                            COUNT(a.id) as total, 
-                            COALESCE(SUM(a.dias_uteis), 0) as dias_total
-                         FROM funcionario f
-                         LEFT JOIN ausencias a ON f.id_fun = a.funcionario_id 
-                            AND a.empresa_id = $empresa_id
-                     AND a.data_inicio >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
-                         WHERE f.empresa_id = $empresa_id 
-                            AND f.estado = 'Ativo'
-                         GROUP BY COALESCE(f.departamento, 'Sem Departamento')
-                         HAVING total > 0 OR dias_total > 0
-                         ORDER BY dias_total DESC, total DESC";
-} else {
-    // Se não há ausências, mostrar todos os departamentos com zero ausências
-    $sql_grafico_dept = "SELECT 
-                            COALESCE(departamento, 'Sem Departamento') as departamento, 
-                            0 as total, 
-                            0 as dias_total
-                         FROM funcionario 
-                         WHERE empresa_id = $empresa_id 
-                            AND estado = 'Ativo'
-                         GROUP BY COALESCE(departamento, 'Sem Departamento')
-                         ORDER BY departamento";
+// Consulta para obter dados para o gráfico de ausências por departamento (respeitando o filtro de período)
+$intervalo_sql_grafico = "";
+switch ($periodo) {
+    case 'trimestre':
+        $intervalo_sql_grafico = "AND a.data_inicio >= DATE_SUB(NOW(), INTERVAL 3 MONTH)";
+        break;
+    case 'semestre':
+        $intervalo_sql_grafico = "AND a.data_inicio >= DATE_SUB(NOW(), INTERVAL 6 MONTH)";
+        break;
+    case 'ano':
+        $intervalo_sql_grafico = "AND a.data_inicio >= DATE_SUB(NOW(), INTERVAL 1 YEAR)";
+        break;
+    case 'mes':
+    default:
+        $intervalo_sql_grafico = "AND a.data_inicio >= DATE_SUB(NOW(), INTERVAL 1 MONTH)";
+        break;
 }
-                     
-$result_grafico_dept = mysqli_query($conn, $sql_grafico_dept);
 
-if (!$result_grafico_dept) {
-    error_log("Erro na consulta de departamentos: " . mysqli_error($conn));
-    // Em caso de erro, usar dados de exemplo
-    $departamentos = ['Administração', 'TI', 'RH', 'Vendas'];
-    $total_ausencias_dept = [2, 1, 3, 1];
-    $total_dias_dept = [5, 2, 8, 3];
-} else {
+$sql_grafico_dept = "
+    SELECT 
+        COALESCE(f.departamento, 'Sem Departamento') as departamento,
+        SUM(COALESCE(a.dias_uteis, 0)) as dias_total
+    FROM 
+        funcionario f
+    LEFT JOIN 
+        ausencias a ON f.id_fun = a.funcionario_id AND a.empresa_id = ? {$intervalo_sql_grafico}
+    WHERE 
+        f.empresa_id = ? AND f.estado = 'Ativo'
+    GROUP BY 
+        departamento
+    ORDER BY 
+        dias_total DESC
+";
+
+$stmt_grafico_dept = mysqli_prepare($conn, $sql_grafico_dept);
+// A empresa_id é usada duas vezes, uma no JOIN e outra no WHERE
+mysqli_stmt_bind_param($stmt_grafico_dept, "ii", $empresa_id, $empresa_id);
+mysqli_stmt_execute($stmt_grafico_dept);
+$result_grafico_dept = mysqli_stmt_get_result($stmt_grafico_dept);
+
 $departamentos = [];
-$total_ausencias_dept = [];
 $total_dias_dept = [];
 
-while ($row = mysqli_fetch_assoc($result_grafico_dept)) {
-    $departamentos[] = $row['departamento'];
-    $total_ausencias_dept[] = $row['total'];
-    $total_dias_dept[] = $row['dias_total'];
+if ($result_grafico_dept) {
+    while ($row = mysqli_fetch_assoc($result_grafico_dept)) {
+        $departamentos[] = $row['departamento'];
+        $total_dias_dept[] = (int)$row['dias_total'];
     }
-
-    // Se não houver dados, criar dados de exemplo para demonstração
-    if (empty($departamentos)) {
-        $departamentos = ['Administração', 'TI', 'RH', 'Vendas'];
-        $total_ausencias_dept = [2, 1, 3, 1];
-        $total_dias_dept = [5, 2, 8, 3];
-    }
+} else {
+    error_log("Erro na consulta do gráfico de departamentos: " . mysqli_error($conn));
 }
 
 // Consulta para obter dados para o gráfico de ausências por tipo
@@ -415,67 +467,71 @@ for ($i = 6; $i >= 0; $i--) {
     $dados_faltas[] = $faltas_dia;
 }
 
-// Função para obter dados de exemplo se não houver dados reais
-function getDadosExemplo($empresa_id, $conn) {
-    // Verificar se há ausências registradas
-    $sql_check = "SELECT COUNT(*) as total FROM ausencias WHERE empresa_id = $empresa_id";
-    $result_check = mysqli_query($conn, $sql_check);
-    
-    if (!$result_check) {
-        error_log("Erro na consulta de verificação de ausências: " . mysqli_error($conn));
-        // Se há erro na consulta, retornar dados de exemplo
-        return [
-            'total_ausencias' => 8,
-            'total_dias' => 25,
-            'taxa_absentismo' => 3.2
-        ];
+// Função para calcular as estatísticas de ausências com base no período
+function calcularEstatisticasAusencias($empresa_id, $conn, $periodo = 'mes') {
+    // Definir o intervalo de datas com base no período selecionado
+    $intervalo_sql = "";
+    // Dias no período para cálculo de dias de trabalho potenciais (aproximação)
+    $dias_no_periodo = 30; 
+    switch ($periodo) {
+        case 'trimestre':
+            $intervalo_sql = "AND data_inicio >= DATE_SUB(NOW(), INTERVAL 3 MONTH)";
+            $dias_no_periodo = 90; // Aproximadamente 3 meses
+            break;
+        case 'semestre':
+            $intervalo_sql = "AND data_inicio >= DATE_SUB(NOW(), INTERVAL 6 MONTH)";
+            $dias_no_periodo = 180; // Aproximadamente 6 meses
+            break;
+        case 'ano':
+            $intervalo_sql = "AND data_inicio >= DATE_SUB(NOW(), INTERVAL 1 YEAR)";
+            $dias_no_periodo = 365;
+            break;
+        case 'mes':
+        default:
+            $intervalo_sql = "AND data_inicio >= DATE_SUB(NOW(), INTERVAL 1 MONTH)";
+            $dias_no_periodo = 30;
+            break;
     }
-    
-    $total_ausencias = mysqli_fetch_assoc($result_check)['total'];
-    
-    if ($total_ausencias == 0) {
-        // Se não há ausências, retornar dados de exemplo
-        return [
-            'total_ausencias' => 8,
-            'total_dias' => 25,
-            'taxa_absentismo' => 3.2
-        ];
-    }
-    
-    // Se há ausências, calcular dados reais
-    $sql_total = "SELECT COUNT(*) as total FROM ausencias WHERE empresa_id = $empresa_id";
+
+    // 1. Total de ausências no período
+    $sql_total = "SELECT COUNT(*) as total FROM ausencias WHERE empresa_id = $empresa_id $intervalo_sql";
     $result_total = mysqli_query($conn, $sql_total);
-    $total_ausencias = mysqli_fetch_assoc($result_total)['total'];
-    
-    $sql_dias = "SELECT SUM(dias_uteis) as total_dias FROM ausencias WHERE empresa_id = $empresa_id";
+    $total_ausencias = $result_total ? mysqli_fetch_assoc($result_total)['total'] : 0;
+
+    // 2. Dias perdidos no período
+    $sql_dias = "SELECT SUM(dias_uteis) as total_dias FROM ausencias WHERE empresa_id = $empresa_id $intervalo_sql";
     $result_dias = mysqli_query($conn, $sql_dias);
-    $total_dias = mysqli_fetch_assoc($result_dias)['total_dias'] ?: 0;
+    $dias_perdidos = $result_dias ? (mysqli_fetch_assoc($result_dias)['total_dias'] ?: 0) : 0;
     
-    // Calcular taxa de absentismo
+    // 3. Taxa de absentismo
+    // Buscar o número de funcionários ativos
     $sql_funcionarios = "SELECT COUNT(*) as total FROM funcionario WHERE empresa_id = $empresa_id AND estado = 'Ativo'";
     $result_funcionarios = mysqli_query($conn, $sql_funcionarios);
-    $total_funcionarios = mysqli_fetch_assoc($result_funcionarios)['total'];
+    $total_funcionarios = $result_funcionarios ? mysqli_fetch_assoc($result_funcionarios)['total'] : 0;
     
-    $dias_uteis_mes = 22;
-    $dias_trabalho_potencial = $total_funcionarios * $dias_uteis_mes;
+    // Calcular dias de trabalho potenciais.
+    // Aproximação: usa 22 dias úteis por mês.
+    $meses_no_periodo = $dias_no_periodo / 30;
+    $dias_uteis_periodo = 22 * $meses_no_periodo;
+    $dias_trabalho_potencial = $total_funcionarios * $dias_uteis_periodo;
     
-    $sql_dias_recentes = "SELECT SUM(a.dias_uteis) as dias_perdidos FROM ausencias a
-                         WHERE a.empresa_id = $empresa_id 
-                         AND a.data_inicio >= DATE_SUB(NOW(), INTERVAL 30 DAY)";
-    $result_dias_recentes = mysqli_query($conn, $sql_dias_recentes);
-    $dias_perdidos = mysqli_fetch_assoc($result_dias_recentes)['dias_perdidos'] ?: 0;
-    
-    $taxa_absentismo = ($dias_trabalho_potencial > 0) ? ($dias_perdidos / $dias_trabalho_potencial) * 100 : 0;
+    $taxa_absentismo = 0;
+    if ($dias_trabalho_potencial > 0) {
+        $taxa_absentismo = ($dias_perdidos / $dias_trabalho_potencial) * 100;
+    }
     
     return [
         'total_ausencias' => $total_ausencias,
-        'total_dias' => $total_dias,
+        'total_dias' => $dias_perdidos,
         'taxa_absentismo' => $taxa_absentismo
     ];
 }
 
-// Obter dados (reais ou de exemplo)
-$dados_estatisticas = getDadosExemplo($empresa_id, $conn);
+// Obter dados com base no período selecionado nos filtros
+$periodo_selecionado = isset($_GET['periodo']) ? mysqli_real_escape_string($conn, $_GET['periodo']) : 'mes';
+$dados_estatisticas = calcularEstatisticasAusencias($empresa_id, $conn, $periodo_selecionado);
+
+require_once 'direitos_ausencias.php';
 ?>
 
 <!DOCTYPE html>
@@ -488,6 +544,85 @@ $dados_estatisticas = getDadosExemplo($empresa_id, $conn);
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@100;200;300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    
+    <!-- Funções JavaScript para edição, exclusão e direitos -->
+    <script>
+        // Funções para edição de ausência (definidas globalmente)
+        function editarAusencia(id, funcionarioId, tipoAusencia, dataInicio, dataFim, justificacao, observacoes) {
+            console.log('Função editarAusencia chamada com:', { id, funcionarioId, tipoAusencia, dataInicio, dataFim, justificacao, observacoes });
+            
+            // Preencher o formulário de edição
+            document.getElementById('edit_ausencia_id').value = id;
+            document.getElementById('edit_funcionario_id').value = funcionarioId;
+            document.getElementById('edit_tipo_ausencia').value = tipoAusencia;
+            document.getElementById('edit_data_inicio').value = dataInicio;
+            document.getElementById('edit_data_fim').value = dataFim;
+            document.getElementById('edit_justificacao').value = justificacao;
+            document.getElementById('edit_observacoes').value = observacoes;
+            
+            // Abrir modal de edição
+            document.getElementById('modalEditarAusencia').style.display = 'block';
+        }
+        
+        function fecharModalEdicao() {
+            console.log('Função fecharModalEdicao chamada');
+            document.getElementById('modalEditarAusencia').style.display = 'none';
+        }
+        
+        // Funções para exclusão de ausência (definidas globalmente)
+        function excluirAusencia(id, nomeFuncionario) {
+            console.log('Função excluirAusencia chamada com:', { id, nomeFuncionario });
+            
+            // Preencher o formulário de exclusão
+            document.getElementById('excluir_ausencia_id').value = id;
+            document.getElementById('textoConfirmacao').innerHTML = 
+                `Tem certeza que deseja excluir a ausência do funcionário <strong>${nomeFuncionario}</strong>?<br><br>Esta ação não pode ser desfeita.`;
+            
+            // Abrir modal de confirmação
+            document.getElementById('modalConfirmarExclusao').style.display = 'block';
+        }
+        
+        function fecharModalExclusao() {
+            console.log('Função fecharModalExclusao chamada');
+            document.getElementById('modalConfirmarExclusao').style.display = 'none';
+        }
+        
+        // Função para fechar notificações (definida globalmente)
+        function fecharNotificacao() {
+            const notification = document.getElementById('notification');
+            if (notification) {
+                notification.style.animation = 'slideOutRight 0.3s ease';
+                setTimeout(() => {
+                    notification.remove();
+                }, 300);
+            }
+        }
+
+        function verDireitosAusencia(tipo, diasUteis, salarioBase, subs, mesDoenca, justificada, promovidaEmpresa) {
+            // Monta HTML do modal
+            let html = '';
+            html += '<h2 style="margin-top:0">Direitos da Ausência</h2>';
+            html += '<div id="direitos-content-modal"></div>';
+            document.getElementById('modalDireitosContent').innerHTML = html;
+            // Chama endpoint PHP para calcular direitos (AJAX)
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', 'ver_direitos_ajax.php');
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    document.getElementById('direitos-content-modal').innerHTML = xhr.responseText;
+                } else {
+                    document.getElementById('direitos-content-modal').innerHTML = 'Erro ao calcular direitos.';
+                }
+            };
+            xhr.send('tipo=' + encodeURIComponent(tipo) + '&dias_uteis=' + encodeURIComponent(diasUteis) + '&salario_base=' + encodeURIComponent(salarioBase) + '&subsidiados=' + encodeURIComponent(subs.join(',')) + '&mes_doenca=' + encodeURIComponent(mesDoenca) + '&justificada=' + encodeURIComponent(justificada) + '&promovida_empresa=' + encodeURIComponent(promovidaEmpresa));
+            document.getElementById('modalDireitos').style.display = 'block';
+        }
+        function fecharModalDireitos() {
+            document.getElementById('modalDireitos').style.display = 'none';
+        }
+    </script>
+    
     <style>
         /* Estilos gerais */
         :root {
@@ -1051,7 +1186,7 @@ $dados_estatisticas = getDadosExemplo($empresa_id, $conn);
 
         .charts-container {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+            grid-template-columns: repeat(3, 1fr);
             gap: 25px;
         }
 
@@ -1254,6 +1389,161 @@ $dados_estatisticas = getDadosExemplo($empresa_id, $conn);
                 height: 220px !important;
             }
         }
+
+        /* Botões de ação na tabela */
+        .btn-editar, .btn-excluir {
+            width: 36px;
+            height: 36px;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+            font-size: 14px;
+        }
+
+        .btn-editar {
+            background-color: rgba(100, 194, 167, 0.2);
+            color: var(--primary-color);
+        }
+
+        .btn-editar:hover {
+            background-color: var(--primary-color);
+            color: white;
+            transform: scale(1.1);
+        }
+
+        .btn-excluir {
+            background-color: rgba(239, 83, 80, 0.2);
+            color: #ef5350;
+        }
+
+        .btn-excluir:hover {
+            background-color: #ef5350;
+            color: white;
+            transform: scale(1.1);
+        }
+
+        body.dark .pagination-item:hover {
+            background-color: rgba(100, 194, 167, 0.2);
+        }
+
+        body.dark .btn-editar {
+            background-color: rgba(0, 153, 255, 0.2);
+            color: #0099ff;
+        }
+
+        body.dark .btn-editar:hover {
+            background-color: #0099ff;
+            color: white;
+        }
+
+        body.dark .btn-excluir {
+            background-color: rgba(239, 83, 80, 0.2);
+            color: #ef5350;
+        }
+
+        body.dark .btn-excluir:hover {
+            background-color: #ef5350;
+            color: white;
+        }
+
+        body.dark .btn-excluir:hover {
+            background-color: #ef5350;
+            color: white;
+        }
+
+        /* Estilos para notificações */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            padding: 16px 20px;
+            border-radius: var(--border-radius-md);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            max-width: 400px;
+            animation: slideInRight 0.3s ease;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .notification.success {
+            background-color: #4caf50;
+            color: white;
+            border-left: 4px solid #2e7d32;
+        }
+
+        .notification.error {
+            background-color: #f44336;
+            color: white;
+            border-left: 4px solid #c62828;
+        }
+
+        .notification-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-grow: 1;
+        }
+
+        .notification-content i {
+            font-size: 18px;
+        }
+
+        .notification-content span {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .notification-close {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+        }
+
+        .notification-close:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Modo escuro para notificações */
+        body.dark .notification {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        body.dark .btn-editar {
+            background-color: rgba(100, 194, 167, 0.2);
+            color: #64c2a7;
+        }
+
+        body.dark .btn-editar:hover {
+            background-color: #64c2a7;
+            color: white;
+        }
     </style>
     <title>SAM - Ausências</title>
 </head>
@@ -1293,6 +1583,33 @@ $dados_estatisticas = getDadosExemplo($empresa_id, $conn);
                 </a>
             </div>
         </header>
+
+        <!-- Sistema de notificações -->
+        <?php if (isset($_SESSION['mensagem_sucesso'])): ?>
+            <div class="notification success" id="notification">
+                <div class="notification-content">
+                    <i class="fas fa-check-circle"></i>
+                    <span><?php echo $_SESSION['mensagem_sucesso']; ?></span>
+                </div>
+                <button class="notification-close" onclick="fecharNotificacao()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <?php unset($_SESSION['mensagem_sucesso']); ?>
+        <?php endif; ?>
+
+        <?php if (isset($_SESSION['mensagem_erro'])): ?>
+            <div class="notification error" id="notification">
+                <div class="notification-content">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span><?php echo $_SESSION['mensagem_erro']; ?></span>
+                </div>
+                <button class="notification-close" onclick="fecharNotificacao()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <?php unset($_SESSION['mensagem_erro']); ?>
+        <?php endif; ?>
 
         <button id="btnNovaAusencia" class="btn-nova-ausencia">
             <i class="fas fa-plus"></i> Registrar Nova Ausência
@@ -1411,7 +1728,7 @@ $dados_estatisticas = getDadosExemplo($empresa_id, $conn);
                     <canvas id="tiposChart"></canvas>
                 </div>
                 
-                <div class="chart-card" style="grid-column: 1 / -1;">
+                <div class="chart-card" style="grid-column: span 2;">
                     <div class="chart-title">Evolução de Ausências (12 meses)</div>
                     <canvas id="evolucaoChart"></canvas>
                 </div>
@@ -1466,6 +1783,7 @@ $dados_estatisticas = getDadosExemplo($empresa_id, $conn);
                         <th>Dias Úteis</th>
                         <th>Justificação</th>
                         <th>Observações</th>
+                        <th>Ações</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1494,6 +1812,11 @@ $dados_estatisticas = getDadosExemplo($empresa_id, $conn);
                             // Formatar as datas
                             $data_inicio = date('d/m/Y', strtotime($row['data_inicio']));
                             $data_fim = date('d/m/Y', strtotime($row['data_fim']));
+                            $salario_base = 100000; // TODO: buscar do funcionário
+                            $subsidiados = ['alimentação', 'transporte']; // TODO: buscar do funcionário
+                            $mes_doenca = 1;
+                            $justificada = true;
+                            $promovida_empresa = true;
                     ?>
                     <tr>
                         <td>
@@ -1520,11 +1843,25 @@ $dados_estatisticas = getDadosExemplo($empresa_id, $conn);
                         <td><?php echo $row['dias_uteis']; ?></td>
                         <td><?php echo $row['justificacao']; ?></td>
                         <td><?php echo $row['observacoes']; ?></td>
+                        <td>
+                            <div style="display: flex; gap: 8px; justify-content: center;">
+                                <button class="btn-editar" onclick="editarAusencia(<?php echo $row['id']; ?>, '<?php echo $row['funcionario_id']; ?>', '<?php echo $row['tipo_ausencia']; ?>', '<?php echo $row['data_inicio']; ?>', '<?php echo $row['data_fim']; ?>', '<?php echo addslashes($row['justificacao']); ?>', '<?php echo addslashes($row['observacoes']); ?>')">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="btn-excluir" onclick="excluirAusencia(<?php echo $row['id']; ?>, '<?php echo addslashes($row['nome_funcionario']); ?>')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                                <button class="btn-direitos" style="background-color:#ffc107;color:#333;" title="Ver Direitos"
+                                    onclick="verDireitosAusencia('<?php echo $row['tipo_ausencia']; ?>', <?php echo $row['dias_uteis']; ?>, <?php echo $salario_base; ?>, <?php echo json_encode($subsidiados); ?>, <?php echo $mes_doenca; ?>, <?php echo $justificada ? 'true' : 'false'; ?>, <?php echo $promovida_empresa ? 'true' : 'false'; ?>)">
+                                    <i class="fas fa-balance-scale"></i>
+                                </button>
+                            </div>
+                        </td>
                     </tr>
                     <?php 
                         }
                     } else {
-                        echo '<tr><td colspan="8" style="text-align: center; padding: 20px;">Nenhuma ausência encontrada</td></tr>';
+                        echo '<tr><td colspan="9" style="text-align: center; padding: 20px;">Nenhuma ausência encontrada</td></tr>';
                     }
                     ?>
                 </tbody>
@@ -1609,6 +1946,91 @@ $dados_estatisticas = getDadosExemplo($empresa_id, $conn);
                 
                 <button type="submit" name="registrar_ausencia" class="btn-registrar">Registrar Ausência</button>
             </form>
+        </div>
+    </div>
+
+    <!-- Modal de edição de ausência -->
+    <div id="modalEditarAusencia" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="fecharModalEdicao()">&times;</span>
+            <h2 style="margin-top: 0; margin-bottom: 20px;">Editar Ausência</h2>
+            
+            <form method="POST" action="ausencias.php" id="formEditarAusencia">
+                <input type="hidden" id="edit_ausencia_id" name="ausencia_id">
+                
+                <div class="form-group">
+                    <label for="edit_funcionario_id">Funcionário:</label>
+                    <select id="edit_funcionario_id" name="funcionario_id" class="form-control" required>
+                        <option value="">Selecione um funcionário</option>
+                        <?php 
+                        mysqli_data_seek($result_funcionarios, 0);
+                        while ($funcionario = mysqli_fetch_assoc($result_funcionarios)) {
+                            echo '<option value="' . $funcionario['id_fun'] . '">' . $funcionario['nome'] . ' (' . str_pad($funcionario['num_mecanografico'], 3, '0', STR_PAD_LEFT) . ')</option>';
+                        }
+                        ?>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="edit_tipo_ausencia">Tipo de Ausência:</label>
+                    <select id="edit_tipo_ausencia" name="tipo_ausencia" class="form-control" required>
+                        <option value="">Selecione o tipo</option>
+                        <option value="Férias">Férias</option>
+                        <option value="Doença">Doença</option>
+                        <option value="Pessoal">Pessoal</option>
+                        <option value="Formação">Formação</option>
+                        <option value="Outro">Outro</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="edit_data_inicio">Data de Início:</label>
+                    <input type="date" id="edit_data_inicio" name="data_inicio" class="form-control" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="edit_data_fim">Data de Fim:</label>
+                    <input type="date" id="edit_data_fim" name="data_fim" class="form-control" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="edit_justificacao">Justificação:</label>
+                    <input type="text" id="edit_justificacao" name="justificacao" class="form-control" maxlength="100">
+                </div>
+                
+                <div class="form-group">
+                    <label for="edit_observacoes">Observações:</label>
+                    <textarea id="edit_observacoes" name="observacoes" class="form-control" rows="3"></textarea>
+                </div>
+                
+                <button type="submit" name="editar_ausencia" class="btn-registrar">Atualizar Ausência</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal de confirmação de exclusão -->
+    <div id="modalConfirmarExclusao" class="modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <span class="close" onclick="fecharModalExclusao()">&times;</span>
+            <h2 style="margin-top: 0; margin-bottom: 20px; text-align: center;">Confirmar Exclusão</h2>
+            
+            <p style="text-align: center; margin-bottom: 25px;" id="textoConfirmacao">
+                Tem certeza que deseja excluir esta ausência?
+            </p>
+            
+            <form method="POST" action="ausencias.php" style="display: flex; gap: 15px;">
+                <input type="hidden" id="excluir_ausencia_id" name="ausencia_id">
+                <button type="button" onclick="fecharModalExclusao()" style="flex: 1; padding: 12px; border: 1px solid #ddd; background: white; border-radius: var(--border-radius-lg); cursor: pointer;">Cancelar</button>
+                <button type="submit" name="excluir_ausencia" style="flex: 1; padding: 12px; border: none; background: #ef5350; color: white; border-radius: var(--border-radius-lg); cursor: pointer;">Excluir</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal de Direitos -->
+    <div id="modalDireitos" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="fecharModalDireitos()">&times;</span>
+            <div id="modalDireitosContent"></div>
         </div>
     </div>
 
@@ -1898,6 +2320,12 @@ $dados_estatisticas = getDadosExemplo($empresa_id, $conn);
     let tiposChart = null;
     
     if (ctxTipos) {
+        // Debug: Verificar se os dados estão sendo carregados
+        console.log('Dados do gráfico de Tipos de Ausência:', {
+            labels: <?php echo json_encode($tipos_ausencia); ?>,
+            data: <?php echo json_encode($total_dias_tipo); ?>
+        });
+
         tiposChart = new Chart(ctxTipos.getContext('2d'), {
         type: 'doughnut',
         data: {
@@ -2132,6 +2560,68 @@ $dados_estatisticas = getDadosExemplo($empresa_id, $conn);
     document.querySelectorAll('canvas').forEach(canvas => {
         chartObserver.observe(canvas);
     });
+    
+    // Validação de datas para o formulário de edição
+    const editDataInicio = document.getElementById('edit_data_inicio');
+    const editDataFim = document.getElementById('edit_data_fim');
+    
+    if (editDataInicio) {
+        editDataInicio.addEventListener('change', validarDatasEdicao);
+    }
+    if (editDataFim) {
+        editDataFim.addEventListener('change', validarDatasEdicao);
+    }
+    
+    function validarDatasEdicao() {
+        const dataInicio = document.getElementById('edit_data_inicio').value;
+        const dataFim = document.getElementById('edit_data_fim').value;
+        
+        if (dataInicio && dataFim && dataInicio > dataFim) {
+            alert('A data de início não pode ser posterior à data de fim.');
+            document.getElementById('edit_data_fim').value = dataInicio;
+        }
+    }
+    
+    // Fechar modais ao clicar fora deles (atualizado)
+    window.onclick = function(event) {
+        const modalAusencia = document.getElementById("modalAusencia");
+        const modalEditar = document.getElementById("modalEditarAusencia");
+        const modalExclusao = document.getElementById("modalConfirmarExclusao");
+        
+        if (event.target == modalAusencia) {
+            modalAusencia.style.display = "none";
+        }
+        if (event.target == modalEditar) {
+            modalEditar.style.display = "none";
+        }
+        if (event.target == modalExclusao) {
+            modalExclusao.style.display = "none";
+        }
+    }
+    
+    // Auto-fechar notificações após 5 segundos
+    const notification = document.getElementById('notification');
+    if (notification) {
+        setTimeout(() => {
+            fecharNotificacao();
+        }, 5000);
+    }
+    
+    // Adicionar animação de saída para notificações
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes slideOutRight {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+    `;
+    document.head.appendChild(style);
 });
     </script>
     <script src="./js/theme.js"></script>

@@ -24,6 +24,9 @@ if (!isset($_SESSION['id_empresa'])) {
 }
 $id_empresa = $_SESSION['id_empresa'];  
 
+// Data atual para consultas de presença
+$data_atual = date('Y-m-d');
+
 // Consulta para buscar os próximos aniversários
 $sql_aniversarios = "
     SELECT id_fun, nome, foto, data_nascimento,
@@ -112,6 +115,211 @@ while ($row = $result_feriados_calendario->fetch_assoc()) {
 }
 
 $stmt_feriados_calendario->close();
+
+// CONSULTAS PARA A SEÇÃO "QUEM ESTÁ..."
+
+// 1. Funcionários a trabalhar (presentes hoje)
+// Obter total
+$sql_trabalhando_count = "
+    SELECT COUNT(DISTINCT f.id_fun) as total
+    FROM funcionario f
+    INNER JOIN registros_ponto rp ON f.id_fun = rp.funcionario_id
+    WHERE f.empresa_id = ? 
+    AND f.estado = 'Ativo'
+    AND rp.data = ?
+    AND rp.status IN ('presente', 'atrasado')";
+$stmt_trabalhando_count = $conn->prepare($sql_trabalhando_count);
+$stmt_trabalhando_count->bind_param("is", $id_empresa, $data_atual);
+$stmt_trabalhando_count->execute();
+$total_trabalhando = $stmt_trabalhando_count->get_result()->fetch_assoc()['total'] ?? 0;
+$stmt_trabalhando_count->close();
+
+// Obter lista para exibição
+$sql_trabalhando = "
+    SELECT f.id_fun, f.nome, f.foto, f.departamento
+    FROM funcionario f
+    INNER JOIN registros_ponto rp ON f.id_fun = rp.funcionario_id
+    WHERE f.empresa_id = ? 
+    AND f.estado = 'Ativo'
+    AND rp.data = ?
+    AND rp.status IN ('presente', 'atrasado')
+    ORDER BY f.nome ASC
+    LIMIT 10";
+
+$stmt_trabalhando = $conn->prepare($sql_trabalhando);
+if ($stmt_trabalhando) {
+    $stmt_trabalhando->bind_param("is", $id_empresa, $data_atual);
+    $stmt_trabalhando->execute();
+    $result_trabalhando = $stmt_trabalhando->get_result();
+
+    $funcionarios_trabalhando = [];
+    while ($row = $result_trabalhando->fetch_assoc()) {
+        $funcionarios_trabalhando[] = $row;
+    }
+    $stmt_trabalhando->close();
+} else {
+    error_log("Erro na preparação da consulta de funcionários trabalhando: " . $conn->error);
+    $funcionarios_trabalhando = [];
+}
+
+// 2. Funcionários com licenças (ausências registradas - médicas, pessoais, etc.)
+// Obter total
+$sql_licencas_count = "
+    SELECT COUNT(DISTINCT f.id_fun) as total
+    FROM funcionario f
+    INNER JOIN ausencias a ON f.id_fun = a.funcionario_id
+    WHERE f.empresa_id = ? 
+    AND f.estado = 'Ativo'
+    AND a.tipo_ausencia IN ('Doença', 'Pessoal', 'Formação', 'Outro')
+    AND ? BETWEEN a.data_inicio AND a.data_fim";
+$stmt_licencas_count = $conn->prepare($sql_licencas_count);
+$stmt_licencas_count->bind_param("is", $id_empresa, $data_atual);
+$stmt_licencas_count->execute();
+$total_licencas = $stmt_licencas_count->get_result()->fetch_assoc()['total'] ?? 0;
+$stmt_licencas_count->close();
+
+// Obter lista para exibição
+$sql_licencas = "
+    SELECT f.id_fun, f.nome, f.foto, f.departamento
+    FROM funcionario f
+    INNER JOIN ausencias a ON f.id_fun = a.funcionario_id
+    WHERE f.empresa_id = ? 
+    AND f.estado = 'Ativo'
+    AND a.tipo_ausencia IN ('Doença', 'Pessoal', 'Formação', 'Outro')
+    AND ? BETWEEN a.data_inicio AND a.data_fim
+    ORDER BY f.nome ASC
+    LIMIT 5";
+
+$stmt_licencas = $conn->prepare($sql_licencas);
+if ($stmt_licencas) {
+    $stmt_licencas->bind_param("is", $id_empresa, $data_atual);
+    $stmt_licencas->execute();
+    $result_licencas = $stmt_licencas->get_result();
+
+    $funcionarios_licencas = [];
+    while ($row = $result_licencas->fetch_assoc()) {
+        $funcionarios_licencas[] = $row;
+    }
+    $stmt_licencas->close();
+} else {
+    error_log("Erro na preparação da consulta de funcionários com licenças: " . $conn->error);
+    $funcionarios_licencas = [];
+}
+
+// 3. Funcionários de férias (ausências registradas como férias)
+// Obter total
+$sql_ferias_count = "
+    SELECT COUNT(DISTINCT f.id_fun) as total
+    FROM funcionario f
+    INNER JOIN ausencias a ON f.id_fun = a.funcionario_id
+    WHERE f.empresa_id = ? 
+    AND f.estado = 'Ativo'
+    AND a.tipo_ausencia = 'Férias'
+    AND ? BETWEEN a.data_inicio AND a.data_fim";
+$stmt_ferias_count = $conn->prepare($sql_ferias_count);
+$stmt_ferias_count->bind_param("is", $id_empresa, $data_atual);
+$stmt_ferias_count->execute();
+$total_ferias = $stmt_ferias_count->get_result()->fetch_assoc()['total'] ?? 0;
+$stmt_ferias_count->close();
+
+// Obter lista para exibição
+$sql_ferias = "
+    SELECT f.id_fun, f.nome, f.foto, f.departamento
+    FROM funcionario f
+    INNER JOIN ausencias a ON f.id_fun = a.funcionario_id
+    WHERE f.empresa_id = ? 
+    AND f.estado = 'Ativo'
+    AND a.tipo_ausencia = 'Férias'
+    AND ? BETWEEN a.data_inicio AND a.data_fim
+    ORDER BY f.nome ASC
+    LIMIT 5";
+
+$stmt_ferias = $conn->prepare($sql_ferias);
+if ($stmt_ferias) {
+    $stmt_ferias->bind_param("is", $id_empresa, $data_atual);
+    $stmt_ferias->execute();
+    $result_ferias = $stmt_ferias->get_result();
+
+    $funcionarios_ferias = [];
+    while ($row = $result_ferias->fetch_assoc()) {
+        $funcionarios_ferias[] = $row;
+    }
+    $stmt_ferias->close();
+} else {
+    error_log("Erro na preparação da consulta de funcionários de férias: " . $conn->error);
+    $funcionarios_ferias = [];
+}
+
+// 4. Funcionários ausentes (não presentes e sem ausência registrada)
+$sql_ausentes_base = "
+    FROM funcionario f
+    WHERE f.empresa_id = ? 
+    AND f.estado = 'Ativo'
+    AND f.id_fun NOT IN (
+        SELECT DISTINCT funcionario_id 
+        FROM registros_ponto 
+        WHERE empresa_id = ? AND data = ?
+    )
+    AND f.id_fun NOT IN (
+        SELECT DISTINCT funcionario_id 
+        FROM ausencias 
+        WHERE empresa_id = ? AND ? BETWEEN data_inicio AND data_fim
+    )";
+
+// Obter total
+$stmt_ausentes_count = $conn->prepare("SELECT COUNT(DISTINCT f.id_fun) as total " . $sql_ausentes_base);
+$stmt_ausentes_count->bind_param("iisis", $id_empresa, $id_empresa, $data_atual, $id_empresa, $data_atual);
+$stmt_ausentes_count->execute();
+$total_ausentes = $stmt_ausentes_count->get_result()->fetch_assoc()['total'] ?? 0;
+$stmt_ausentes_count->close();
+
+// Obter lista para exibição
+$sql_ausentes = "
+    SELECT f.id_fun, f.nome, f.foto, f.departamento
+    " . $sql_ausentes_base . "
+    ORDER BY f.nome ASC
+    LIMIT 5";
+
+$stmt_ausentes = $conn->prepare($sql_ausentes);
+if ($stmt_ausentes) {
+    $stmt_ausentes->bind_param("iisis", $id_empresa, $id_empresa, $data_atual, $id_empresa, $data_atual);
+    $stmt_ausentes->execute();
+    $result_ausentes = $stmt_ausentes->get_result();
+
+    $funcionarios_ausentes = [];
+    while ($row = $result_ausentes->fetch_assoc()) {
+        $funcionarios_ausentes[] = $row;
+    }
+    $stmt_ausentes->close();
+} else {
+    error_log("Erro na preparação da consulta de funcionários ausentes: " . $conn->error);
+    $funcionarios_ausentes = [];
+}
+
+// 5. Lista e total de todos os funcionários ativos
+$sql_todos_funcionarios = "
+    SELECT f.id_fun, f.nome, f.foto
+    FROM funcionario f
+    WHERE f.empresa_id = ? AND f.estado = 'Ativo'
+    ORDER BY f.nome ASC";
+
+$stmt_todos = $conn->prepare($sql_todos_funcionarios);
+if ($stmt_todos) {
+    $stmt_todos->bind_param("i", $id_empresa);
+    $stmt_todos->execute();
+    $result_todos = $stmt_todos->get_result();
+
+    $todos_funcionarios_list = [];
+    while ($row = $result_todos->fetch_assoc()) {
+        $todos_funcionarios_list[] = $row;
+    }
+    $stmt_todos->close();
+    $total_funcionarios = count($todos_funcionarios_list);
+} else {
+    error_log("Erro na preparação da consulta de todos os funcionários: " . $conn->error);
+    $todos_funcionarios_list = [];
+    $total_funcionarios = 0;
+}
 
 $sql_novos_funcionarios = "
     SELECT f.id_fun, f.nome, d.nome as departamento_nome, f.foto 
@@ -282,6 +490,403 @@ body.dark .birthday-name {
     word-break: break-word; /* Permite quebra de palavra se necessário */
 }
 
+.status-label {
+    color: #666;
+    margin-bottom: 5px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.status-count {
+    background-color: #3EB489;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: bold;
+    margin-left: 8px;
+}
+
+.avatar-group {
+    display: flex;
+    gap: 4px;
+    margin-left: 0;
+}
+
+.avatar {
+    width: 35px;
+    height: 35px;
+    flex-shrink: 0; /* Impede que o avatar encolha */
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 0; /* Remove a margem da cascata */
+    border: 2px solid white;
+    font-size: 16px;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s ease;
+}
+
+.avatar:hover {
+    transform: scale(1.1);
+    z-index: 10;
+}
+
+/* Estilo para o ícone padrão usando máscara */
+.avatar.avatar-default-icon::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    -webkit-mask: url('icones/icons-sam-18.svg') no-repeat center;
+    mask: url('icones/icons-sam-18.svg') no-repeat center;
+    -webkit-mask-size: 85%;
+    mask-size: 85%;
+}
+
+/* Ícone padrão em fundo verde (odd) deve ser branco */
+.avatar:nth-child(odd).avatar-default-icon::before {
+    background-color: white;
+}
+
+/* Ícone padrão em fundo branco (even) deve ser verde */
+.avatar:nth-child(even).avatar-default-icon::before {
+    background-color: #3EB489;
+}
+
+.avatar:nth-child(odd) {
+    background-color: #3EB489;
+    color: white;
+}
+
+.avatar:nth-child(even) {
+    background-color: white;
+    color: #3EB489;
+    border: 2px solid #3EB489;
+}
+
+/* Dark mode para os contadores */
+body.dark .status-count {
+    background-color: #64c2a7;
+    color: #1E1E1E;
+}
+
+body.dark .avatar {
+    border-color: #2C2C2C;
+}
+
+body.dark .avatar:nth-child(even) {
+    background-color: #2C2C2C;
+    color: #64c2a7;
+    border: 2px solid #64c2a7;
+}
+
+.birthdays-container {
+    display: flex;
+    justify-content: space-evenly;
+    align-items: center;
+    margin-top: -10px;
+}
+
+.birthday-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.birthday-date {
+    margin-bottom: 10px;
+    color: #666;
+    font-weight: bold;
+}
+
+.birthday-avatar {
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+    font-weight: bold;
+    background-color: #3EB489;
+}
+
+.birthday-avatar:nth-child(odd) {
+    background-color: #3EB489;
+    color: white;
+}
+
+.birthday-avatar:nth-child(even) {
+    background-color: #3EB489;
+    color: #3EB489;
+    border: 2px solid #3EB489;
+}
+
+.birthday-name {
+    font-size: 12px;
+    color: #666;
+}
+
+.section-icon {
+    width: 55px;
+    height: 55px;
+    border-radius: 50%;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 8px;
+}
+
+.holiday-item {
+    display: flex;
+    margin-bottom: 8px;
+}
+
+.holiday-date {
+    color: #FF6B6B;
+    font-weight: bold;
+    margin-right: 15px;
+    min-width: 45px;
+}
+
+.holiday1{
+    font-size: 12.5px;
+    color: #666;
+    font: bold;
+}
+
+.calendar {
+    padding: 20px;
+}
+
+.calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+    color: #3EB489;
+    font-weight: bold;
+}
+
+.calendar-header span {
+    cursor: pointer;
+}
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 5px;
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+.calendar-weekdays {
+    font-size: 14px;
+    color: #666;
+}
+
+.calendar-day {
+    padding: 8px;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+.calendar-day.active {
+    background: #3EB489;
+    color: white;
+}
+
+.calendar-day.weekend {
+    background: #2a9c6f;
+    color: white;
+}
+
+.calendar-day.empty {
+    background: transparent;
+}
+
+.new-employees {
+    margin-top: 20px;
+    height: 360px;
+    overflow-y: auto;
+}
+
+.new-employees::-webkit-scrollbar {
+    width: 6px;
+}
+
+
+.new-employees::-webkit-scrollbar-thumb {
+    background-color: #aaa;
+    border-radius: 10px;  
+}
+
+.new-employees::-webkit-scrollbar-track {
+    background-color: #f0f0f0;
+    border-radius: 10px;  
+}
+
+.new-employees-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    font-size: 13.5px;
+
+}
+
+.new-employees-header1{
+    color: #666;
+    font: bold;
+    
+}
+
+.add-button1 {
+    text-decoration: none;
+    color: #3EB489;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    font-size: 13.5px;
+    
+
+}
+
+.employee-item {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    background: #f5f5f5;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    flex-shrink: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.employee-avatar {
+    width: 35px;
+    height: 35px;
+    background: #3EB489;
+    border-radius: 50%;
+    margin-right: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 16px;
+    overflow: hidden;
+    flex-shrink: 0;
+    position: relative;
+}
+
+.employee-avatar img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+.employee-info {
+    flex: 1;
+}
+
+.employee-name {
+    font-weight: bold;
+}
+
+.employee-sector {
+    color: #666;
+    font-size: 11px;
+}
+
+@media (max-width: 1200px) {
+    .dashboard-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .main-content {
+        padding: 10px 20px;
+    }
+}
+
+@media (max-width: 768px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr; /* Uma coluna em telas menores */
+    }
+
+    .sidebar {
+        width: 60px; /* Reduzir a largura da sidebar */
+    }
+
+    .header-buttons {
+        width: 100%; /* Ajustar a largura dos botões no cabeçalho */
+    }
+
+    .btn {
+        padding: 6px 12px; /* Ajustar o padding dos botões */
+    }
+
+    .welcome-card {
+        height: 120px; /* Ajustar a altura do cartão de boas-vindas */
+    }
+
+    .calendar-header {
+        flex-direction: column; /* Colocar os elementos em coluna */
+        align-items: flex-start; /* Alinhar à esquerda */
+    }
+
+    .calendar-header span {
+        margin-bottom: 5px; /* Espaçamento entre os elementos */
+    }
+}
+
+@media (max-width: 480px) {
+    .sidebar {
+        display: none; /* Ocultar a sidebar em telas muito pequenas */
+    }
+
+    .main-content {
+        padding: 10px; /* Reduzir o padding do conteúdo principal */
+    }
+
+    .header {
+        flex-direction: column; /* Colocar os elementos em coluna */
+        align-items: flex-start; /* Alinhar à esquerda */
+    }
+
+    .header-buttons {
+        width: 100%; /* Ajustar a largura dos botões no cabeçalho */
+        justify-content: space-between; /* Espaçar os botões */
+    }
+
+    .welcome-card {
+        height: 100px; /* Ajustar a altura do cartão de boas-vindas */
+    }
+
+    .employee-item {
+        flex-direction: column; /* Colocar os elementos em coluna */
+        align-items: flex-start; /* Alinhar à esquerda */
+    }
+
+    .employee-avatar {
+        margin-bottom: 5px; /* Espaçamento entre a imagem e o texto */
+    }
+}
 </style>
 <body>
     <div class="sidebar">
@@ -323,60 +928,177 @@ body.dark .birthday-name {
                     </div>
                     
                     <div class="status-group">
-                        <div class="status-label">A trabalhar</div>
+                        <div class="status-label">A trabalhar <span class="status-count">(<?php echo $total_trabalhando; ?>)</span></div>
                         <div class="avatar-group">
-                            <img src="icones/icons-sam-18.svg" alt="" class="avatar">
-                            <img src="icones/icons-sam-19.svg" alt="" class="avatar">
-                            <img src="icones/icons-sam-18.svg" alt="" class="avatar">
-                            <img src="icones/icons-sam-19.svg" alt="" class="avatar">
-                            <img src="icones/icons-sam-18.svg" alt="" class="avatar">
-                            <img src="icones/icons-sam-19.svg" alt="" class="avatar">
-                            <img src="icones/icons-sam-18.svg" alt="" class="avatar">
-                            <img src="icones/icons-sam-19.svg" alt="" class="avatar">
-                            <img src="icones/icons-sam-18.svg" alt="" class="avatar">
-                            <div class="avatar">+63</div>
+                            <?php if (!empty($funcionarios_trabalhando)): ?>
+                                <?php 
+                                $max_avatars = 4;
+                                $total_funcionarios_trabalhando = count($funcionarios_trabalhando);
+                                $funcionarios_para_mostrar = array_slice($funcionarios_trabalhando, 0, $max_avatars);
+                                ?>
+                                
+                                <?php foreach ($funcionarios_para_mostrar as $funcionario): ?>
+                                    <?php
+                                    $has_photo = !empty($funcionario['foto']) && file_exists($funcionario['foto']);
+                                    $avatar_class = 'avatar' . (!$has_photo ? ' avatar-default-icon' : '');
+                                    ?>
+                                    <div class="<?php echo $avatar_class; ?>" title="<?php echo htmlspecialchars($funcionario['nome']); ?>">
+                                        <?php if ($has_photo): ?>
+                                            <img src="<?php echo $funcionario['foto']; ?>" alt="<?php echo htmlspecialchars($funcionario['nome']); ?>" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endforeach; ?>
+                                
+                                <?php if ($total_funcionarios_trabalhando > $max_avatars): ?>
+                                    <div class="avatar" title="Mais <?php echo ($total_funcionarios_trabalhando - $max_avatars); ?> funcionários">
+                                        +<?php echo ($total_funcionarios_trabalhando - $max_avatars); ?>
+                                    </div>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <div class="avatar" style="background-color: #f5f5f5; color: #999; font-size: 12px; display: flex; align-items: center; justify-content: center; width: auto; padding: 0 15px; border-radius: 20px;">
+                                    Nenhum
+                                </div>
+                            <?php endif; ?>
                         </div>
                     </div>
 
                     <div class="status-group">
-                        <div class="status-label">Descanso</div>
+                        <div class="status-label">Licenças <span class="status-count">(<?php echo $total_licencas; ?>)</span></div>
                         <div class="avatar-group">
-                            <img src="icones/icons-sam-18.svg" alt="" class="avatar">
-                            <img src="icones/icons-sam-19.svg" alt="" class="avatar">
-                            <img src="icones/icons-sam-18.svg" alt="" class="avatar">
-
+                            <?php if (!empty($funcionarios_licencas)): ?>
+                                <?php 
+                                $max_avatars = 4;
+                                $total_funcionarios_licencas = count($funcionarios_licencas);
+                                $funcionarios_para_mostrar = array_slice($funcionarios_licencas, 0, $max_avatars);
+                                ?>
+                                
+                                <?php foreach ($funcionarios_para_mostrar as $funcionario): ?>
+                                    <?php
+                                    $has_photo = !empty($funcionario['foto']) && file_exists($funcionario['foto']);
+                                    $avatar_class = 'avatar' . (!$has_photo ? ' avatar-default-icon' : '');
+                                    ?>
+                                    <div class="<?php echo $avatar_class; ?>" title="<?php echo htmlspecialchars($funcionario['nome']); ?>">
+                                        <?php if ($has_photo): ?>
+                                            <img src="<?php echo $funcionario['foto']; ?>" alt="<?php echo htmlspecialchars($funcionario['nome']); ?>" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endforeach; ?>
+                                
+                                <?php if ($total_funcionarios_licencas > $max_avatars): ?>
+                                    <div class="avatar" title="Mais <?php echo ($total_funcionarios_licencas - $max_avatars); ?> funcionários">
+                                        +<?php echo ($total_funcionarios_licencas - $max_avatars); ?>
+                                    </div>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <div class="avatar" style="background-color: #f5f5f5; color: #999; font-size: 12px; display: flex; align-items: center; justify-content: center; width: auto; padding: 0 15px; border-radius: 20px;">
+                                    Nenhum
+                                </div>
+                            <?php endif; ?>
                         </div>
                     </div>
 
                     <div class="status-group">
-                        <div class="status-label">Férias</div>
+                        <div class="status-label">Férias <span class="status-count">(<?php echo $total_ferias; ?>)</span></div>
                         <div class="avatar-group">
-                            <img src="icones/icons-sam-18.svg" alt="" class="avatar">
-                            <img src="icones/icons-sam-19.svg" alt="" class="avatar">
-                            <img src="icones/icons-sam-18.svg" alt="" class="avatar">
-                            <img src="icones/icons-sam-19.svg" alt="" class="avatar">
-                            <img src="icones/icons-sam-18.svg" alt="" class="avatar">
+                            <?php if (!empty($funcionarios_ferias)): ?>
+                                <?php 
+                                $max_avatars = 4;
+                                $total_funcionarios_ferias = count($funcionarios_ferias);
+                                $funcionarios_para_mostrar = array_slice($funcionarios_ferias, 0, $max_avatars);
+                                ?>
+                                
+                                <?php foreach ($funcionarios_para_mostrar as $funcionario): ?>
+                                    <?php
+                                    $has_photo = !empty($funcionario['foto']) && file_exists($funcionario['foto']);
+                                    $avatar_class = 'avatar' . (!$has_photo ? ' avatar-default-icon' : '');
+                                    ?>
+                                    <div class="<?php echo $avatar_class; ?>" title="<?php echo htmlspecialchars($funcionario['nome']); ?>">
+                                        <?php if ($has_photo): ?>
+                                            <img src="<?php echo $funcionario['foto']; ?>" alt="<?php echo htmlspecialchars($funcionario['nome']); ?>" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+                                        <?php endif; ?>
                         </div>
-
+                                <?php endforeach; ?>
+                                
+                                <?php if ($total_funcionarios_ferias > $max_avatars): ?>
+                                    <div class="avatar" title="Mais <?php echo ($total_funcionarios_ferias - $max_avatars); ?> funcionários">
+                                        +<?php echo ($total_funcionarios_ferias - $max_avatars); ?>
+                                    </div>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <div class="avatar" style="background-color: #f5f5f5; color: #999; font-size: 12px; display: flex; align-items: center; justify-content: center; width: auto; padding: 0 15px; border-radius: 20px;">
+                                    Nenhum
+                                </div>
+                            <?php endif; ?>
+                        </div>
                     </div>
 
                     <div class="status-group">
-                        <div class="status-label">Faltas</div>
+                        <div class="status-label">Faltas <span class="status-count">(<?php echo $total_ausentes; ?>)</span></div>
                         <div class="avatar-group">
-                            <div class="avatar">N/D</div>
+                            <?php if (!empty($funcionarios_ausentes)): ?>
+                                <?php 
+                                $max_avatars = 4;
+                                $total_funcionarios_ausentes = count($funcionarios_ausentes);
+                                $funcionarios_para_mostrar = array_slice($funcionarios_ausentes, 0, $max_avatars);
+                                ?>
+                                
+                                <?php foreach ($funcionarios_para_mostrar as $funcionario): ?>
+                                    <?php
+                                    $has_photo = !empty($funcionario['foto']) && file_exists($funcionario['foto']);
+                                    $avatar_class = 'avatar' . (!$has_photo ? ' avatar-default-icon' : '');
+                                    ?>
+                                    <div class="<?php echo $avatar_class; ?>" title="<?php echo htmlspecialchars($funcionario['nome']); ?>">
+                                        <?php if ($has_photo): ?>
+                                            <img src="<?php echo $funcionario['foto']; ?>" alt="<?php echo htmlspecialchars($funcionario['nome']); ?>" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endforeach; ?>
+                                
+                                <?php if ($total_funcionarios_ausentes > $max_avatars): ?>
+                                    <div class="avatar" title="Mais <?php echo ($total_funcionarios_ausentes - $max_avatars); ?> funcionários">
+                                        +<?php echo ($total_funcionarios_ausentes - $max_avatars); ?>
+                                    </div>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <div class="avatar" style="background-color: #f5f5f5; color: #999; font-size: 12px; display: flex; align-items: center; justify-content: center; width: auto; padding: 0 15px; border-radius: 20px;">
+                                    Nenhum
+                                </div>
+                            <?php endif; ?>
                         </div>
                     </div>
 
                     <div class="status-group">
-                        <div class="status-label">Todos</div>
+                        <div class="status-label">Todos <span class="status-count">(<?php echo $total_funcionarios; ?>)</span></div>
                         <div class="avatar-group">
-                            <img src="icones/icons-sam-18.svg" alt="" class="avatar">
-                            <img src="icones/icons-sam-19.svg" alt="" class="avatar">
-                            <img src="icones/icons-sam-18.svg" alt="" class="avatar">
-                            <img src="icones/icons-sam-19.svg" alt="" class="avatar">
-                            <img src="icones/icons-sam-18.svg" alt="" class="avatar">
+                            <?php if (!empty($todos_funcionarios_list)): ?>
+                                <?php 
+                                $max_avatars = 4;
+                                $funcionarios_para_mostrar = array_slice($todos_funcionarios_list, 0, $max_avatars);
+                                ?>
+                                
+                                <?php foreach ($funcionarios_para_mostrar as $funcionario): ?>
+                                    <?php
+                                    $has_photo = !empty($funcionario['foto']) && file_exists($funcionario['foto']);
+                                    $avatar_class = 'avatar' . (!$has_photo ? ' avatar-default-icon' : '');
+                                    ?>
+                                    <div class="<?php echo $avatar_class; ?>" title="<?php echo htmlspecialchars($funcionario['nome']); ?>">
+                                        <?php if ($has_photo): ?>
+                                            <img src="<?php echo $funcionario['foto']; ?>" alt="<?php echo htmlspecialchars($funcionario['nome']); ?>" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+                                        <?php endif; ?>
                         </div>
-                        
+                                <?php endforeach; ?>
+                                
+                                <?php if ($total_funcionarios > $max_avatars): ?>
+                                    <div class="avatar" title="Mais <?php echo ($total_funcionarios - $max_avatars); ?> funcionários">
+                                        +<?php echo ($total_funcionarios - $max_avatars); ?>
+                                    </div>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <div class="avatar" style="background-color: #f5f5f5; color: #999; font-size: 12px; display: flex; align-items: center; justify-content: center; width: auto; padding: 0 15px; border-radius: 20px;">
+                                    Nenhum
+                                </div>
+                            <?php endif; ?>
+                        </div>
                     </div>
 
                 </div>
@@ -499,6 +1221,33 @@ body.dark .birthday-name {
         updateTime();
 
         setInterval(updateTime, 1000);
+
+        // Função para atualizar os dados da seção "Quem está..."
+        function atualizarDadosPresenca() {
+            fetch('get_presenca_data.php')
+                .then(response => response.json())
+                .then(data => {
+                    // Atualizar contadores
+                    document.querySelectorAll('.status-count').forEach((counter, index) => {
+                        const counts = [data.total_trabalhando, data.total_licencas, data.total_ferias, data.total_ausentes, data.total_funcionarios];
+                        if (counts[index] !== undefined) {
+                            counter.textContent = `(${counts[index]})`;
+                        }
+                    });
+
+                    // Atualizar avatares (simplificado - apenas o total)
+                    const totalAvatar = document.querySelector('.status-group:last-child .avatar');
+                    if (totalAvatar) {
+                        totalAvatar.textContent = data.total_funcionarios;
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro ao atualizar dados de presença:', error);
+                });
+        }
+
+        // Atualizar dados a cada 30 segundos
+        setInterval(atualizarDadosPresenca, 30000);
     </script>
     <script src="./js/UI.js"></script>
     <script src="./js/theme.js"></script>
@@ -748,23 +1497,70 @@ body {
     color: #666;
     margin-bottom: 5px;
     font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.status-count {
+    background-color: #3EB489;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: bold;
+    margin-left: 8px;
 }
 
 .avatar-group {
     display: flex;
-    margin-left: 10px;
+    gap: 4px;
+    margin-left: 0;
 }
 
 .avatar {
     width: 35px;
     height: 35px;
+    flex-shrink: 0; /* Impede que o avatar encolha */
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-left: -10px;
+    margin-left: 0; /* Remove a margem da cascata */
     border: 2px solid white;
     font-size: 16px;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s ease;
+}
+
+.avatar:hover {
+    transform: scale(1.1);
+    z-index: 10;
+}
+
+/* Estilo para o ícone padrão usando máscara */
+.avatar.avatar-default-icon::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    -webkit-mask: url('icones/icons-sam-18.svg') no-repeat center;
+    mask: url('icones/icons-sam-18.svg') no-repeat center;
+    -webkit-mask-size: 85%;
+    mask-size: 85%;
+}
+
+/* Ícone padrão em fundo verde (odd) deve ser branco */
+.avatar:nth-child(odd).avatar-default-icon::before {
+    background-color: white;
+}
+
+/* Ícone padrão em fundo branco (even) deve ser verde */
+.avatar:nth-child(even).avatar-default-icon::before {
+    background-color: #3EB489;
 }
 
 .avatar:nth-child(odd) {
@@ -778,9 +1574,25 @@ body {
     border: 2px solid #3EB489;
 }
 
+/* Dark mode para os contadores */
+body.dark .status-count {
+    background-color: #64c2a7;
+    color: #1E1E1E;
+}
+
+body.dark .avatar {
+    border-color: #2C2C2C;
+}
+
+body.dark .avatar:nth-child(even) {
+    background-color: #2C2C2C;
+    color: #64c2a7;
+    border: 2px solid #64c2a7;
+}
+
 .birthdays-container {
     display: flex;
-    justify-content: space-between;
+    justify-content: space-evenly;
     align-items: center;
     margin-top: -10px;
 }

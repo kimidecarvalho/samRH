@@ -34,6 +34,8 @@ if (mysqli_num_rows($result_check_table) == 0) {
         data DATE NOT NULL,
         entrada DATETIME NULL,
         saida DATETIME NULL,
+        status ENUM('presente', 'ausente', 'atrasado') DEFAULT 'ausente',
+        tipo_registro ENUM('entrada', 'saida') NULL,
         observacao TEXT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -99,6 +101,28 @@ if (mysqli_num_rows($result_check_table) == 0) {
             }
         }
     }
+} else {
+    // Verificar se a coluna status existe, senão adicionar
+    $sql_check_status = "SHOW COLUMNS FROM registros_ponto LIKE 'status'";
+    $result_check_status = mysqli_query($conn, $sql_check_status);
+    
+    if (mysqli_num_rows($result_check_status) == 0) {
+        $sql_add_status = "ALTER TABLE registros_ponto ADD COLUMN status ENUM('presente', 'ausente', 'atrasado') DEFAULT 'ausente' AFTER saida";
+        if (!mysqli_query($conn, $sql_add_status)) {
+            error_log("Erro ao adicionar coluna status: " . mysqli_error($conn));
+        }
+    }
+    
+    // Verificar se a coluna tipo_registro existe, senão adicionar
+    $sql_check_tipo = "SHOW COLUMNS FROM registros_ponto LIKE 'tipo_registro'";
+    $result_check_tipo = mysqli_query($conn, $sql_check_tipo);
+    
+    if (mysqli_num_rows($result_check_tipo) == 0) {
+        $sql_add_tipo = "ALTER TABLE registros_ponto ADD COLUMN tipo_registro ENUM('entrada', 'saida') NULL AFTER status";
+        if (!mysqli_query($conn, $sql_add_tipo)) {
+            error_log("Erro ao adicionar coluna tipo_registro: " . mysqli_error($conn));
+        }
+    }
 }
 
 // Processamento do formulário de registro de ponto
@@ -156,14 +180,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['registrar_ponto'])) {
         
         if ($tipo_registro === 'entrada') {
             $sql_update = "UPDATE registros_ponto SET 
-                          hora_entrada = '$hora', 
+                          entrada = '$hora', 
                           tipo_registro = '$tipo_registro', 
                           status = '$status', 
                           observacao = '$observacao' 
                           WHERE id = '{$registro['id']}'";
         } else {
             $sql_update = "UPDATE registros_ponto SET 
-                          hora_saida = '$hora', 
+                          saida = '$hora', 
                           tipo_registro = '$tipo_registro', 
                           observacao = '$observacao' 
                           WHERE id = '{$registro['id']}'";
@@ -178,14 +202,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['registrar_ponto'])) {
         // Não existe registro, criar novo
         if ($tipo_registro === 'entrada') {
             $sql_insert = "INSERT INTO registros_ponto (
-                          empresa_id, funcionario_id, data, hora_entrada, 
+                          empresa_id, funcionario_id, data, entrada, 
                           tipo_registro, status, observacao) 
                           VALUES (
                           '$empresa_id_func', '$funcionario_id', '$data', '$hora', 
                           '$tipo_registro', '$status', '$observacao')";
         } else {
             $sql_insert = "INSERT INTO registros_ponto (
-                          empresa_id, funcionario_id, data, hora_saida, 
+                          empresa_id, funcionario_id, data, saida, 
                           tipo_registro, status, observacao) 
                           VALUES (
                           '$empresa_id_func', '$funcionario_id', '$data', '$hora', 
@@ -214,52 +238,28 @@ $data_atual = date('Y-m-d');
 
 // Consulta para obter o total de funcionários presentes hoje na tabela registros_ponto
 $sql_presentes = "SELECT COUNT(DISTINCT funcionario_id) AS total FROM registros_ponto 
-                 WHERE data = '$data_atual' AND status = 'presente'";
+                 WHERE empresa_id = $empresa_id AND data = '$data_atual' AND status = 'presente'";
 $result_presentes = mysqli_query($conn, $sql_presentes);
 $total_presentes = 0;
 if ($result_presentes && mysqli_num_rows($result_presentes) > 0) {
     $total_presentes = mysqli_fetch_assoc($result_presentes)['total'];
 }
 
-// Consulta para obter o total de ausentes hoje
-$sql_ausentes = "SELECT COUNT(DISTINCT funcionario_id) AS total FROM registros_ponto 
-                 WHERE data = '$data_atual' AND status = 'ausente'";
-$result_ausentes = mysqli_query($conn, $sql_ausentes);
-$total_ausentes = 0;
-if ($result_ausentes && mysqli_num_rows($result_ausentes) > 0) {
-    $total_ausentes = mysqli_fetch_assoc($result_ausentes)['total'];
+// Consulta para obter o total de funcionários atrasados hoje
+$sql_atrasados = "SELECT COUNT(DISTINCT funcionario_id) AS total FROM registros_ponto 
+                 WHERE empresa_id = $empresa_id AND data = '$data_atual' AND status = 'atrasado'";
+$result_atrasados = mysqli_query($conn, $sql_atrasados);
+$total_atrasados = 0;
+if ($result_atrasados && mysqli_num_rows($result_atrasados) > 0) {
+    $total_atrasados = mysqli_fetch_assoc($result_atrasados)['total'];
 }
 
-// Se não tiver funcionários registrados como ausentes, calcular a diferença entre total e presentes
-if ($total_ausentes == 0) {
-    // Consultar todos os funcionários ativos que não têm registro hoje
-    $sql_ausentes_calc = "SELECT COUNT(*) AS total FROM funcionario f 
-                         WHERE f.empresa_id = $empresa_id 
-                         AND f.estado = 'Ativo'
-                         AND NOT EXISTS (
-                             SELECT 1 FROM registros_ponto r 
-                             WHERE r.funcionario_id = f.id_fun 
-                             AND r.data = '$data_atual'
-                         )";
-    $result_ausentes_calc = mysqli_query($conn, $sql_ausentes_calc);
-    if ($result_ausentes_calc && mysqli_num_rows($result_ausentes_calc) > 0) {
-        $total_ausentes = mysqli_fetch_assoc($result_ausentes_calc)['total'];
-    }
-}
+// Calcular ausentes hoje (total de ativos - (presentes + atrasados))
+$total_ausentes = $total_funcionarios - $total_presentes - $total_atrasados;
 
-// Consultar os registros da tabela ausencias para complementar
-$sql_ausencias_hoje = "SELECT COUNT(DISTINCT funcionario_id) AS total FROM ausencias 
-                      WHERE empresa_id = $empresa_id 
-                      AND '$data_atual' BETWEEN data_inicio AND data_fim";
-$result_ausencias_hoje = mysqli_query($conn, $sql_ausencias_hoje);
-if ($result_ausencias_hoje && mysqli_num_rows($result_ausencias_hoje) > 0) {
-    $total_ausencias = mysqli_fetch_assoc($result_ausencias_hoje)['total'];
-    // Somar ao total de ausentes, mas evitar duplicação
-    $total_ausentes += $total_ausencias;
-    // Garantir que não ultrapasse o total de funcionários
-    if ($total_ausentes > $total_funcionarios) {
-        $total_ausentes = $total_funcionarios;
-    }
+// Garantir que o número de ausentes não seja negativo
+if ($total_ausentes < 0) {
+    $total_ausentes = 0;
 }
 
 // Cálculo de funcionários atrasados (chegaram após as 8:30)
@@ -307,7 +307,7 @@ $sql_registros_recentes = "SELECT r.*, f.nome, f.num_mecanografico, f.foto, d.no
                           LEFT JOIN departamentos d ON f.departamento = d.id
                           WHERE f.empresa_id = $empresa_id
                           AND r.data BETWEEN '$data_inicio' AND '$data_fim'
-                          ORDER BY r.data DESC, r.hora_entrada DESC";
+                          ORDER BY r.data DESC, r.entrada DESC";
 $result_registros_recentes = mysqli_query($conn, $sql_registros_recentes);
 
 // Obter dados dos últimos 7 dias para o gráfico de presença
@@ -462,13 +462,13 @@ $dias_atrasados = $presencas_mes['dias_atrasados'] ?? 0;
 
 // Calcular média de horas trabalhadas no mês
 $sql_media_horas = "SELECT AVG(
-                    TIME_TO_SEC(TIMEDIFF(hora_saida, hora_entrada))/3600
+                    TIME_TO_SEC(TIMEDIFF(saida, entrada))/3600
                   ) as media_horas 
                   FROM registros_ponto
                   WHERE funcionario_id IN (SELECT id_fun FROM funcionario WHERE empresa_id = $empresa_id)
                   AND data BETWEEN '$inicio_mes' AND '$fim_mes'
-                  AND hora_entrada IS NOT NULL 
-                  AND hora_saida IS NOT NULL";
+                  AND entrada IS NOT NULL 
+                  AND saida IS NOT NULL";
 $result_media_horas = mysqli_query($conn, $sql_media_horas);
 $media_horas = 0;
 if ($result_media_horas && mysqli_num_rows($result_media_horas) > 0) {
@@ -1217,9 +1217,9 @@ if ($result_media_horas && mysqli_num_rows($result_media_horas) > 0) {
                     <?php if ($result_registros_recentes && mysqli_num_rows($result_registros_recentes) > 0): ?>
                         <?php while ($row = mysqli_fetch_assoc($result_registros_recentes)): 
                             $data_formatada = date('d/m/Y', strtotime($row['data']));
-                            $entrada = !empty($row['hora_entrada']) ? date('H:i', strtotime($row['hora_entrada'])) : '-';
-                            $saida = !empty($row['hora_saida']) ? date('H:i', strtotime($row['hora_saida'])) : '-';
-                            $horas_trabalhadas = calcularHorasTrabalhadas($row['hora_entrada'], $row['hora_saida']);
+                            $entrada = !empty($row['entrada']) ? date('H:i', strtotime($row['entrada'])) : '-';
+                            $saida = !empty($row['saida']) ? date('H:i', strtotime($row['saida'])) : '-';
+                            $horas_trabalhadas = calcularHorasTrabalhadas($row['entrada'], $row['saida']);
                             $status = ucfirst($row['status']);
                             $status_class = 'status-' . $row['status'];
                         ?>

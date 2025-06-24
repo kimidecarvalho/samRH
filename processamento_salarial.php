@@ -4,9 +4,13 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
+// Incluir direitos_ausencias.php primeiro para garantir que as funções estejam disponíveis
+require_once 'direitos_ausencias.php';
+
 include 'protect.php'; // Protege a página para usuários autenticados
 include 'config.php'; // Conexão com o banco de dados
 include 'configuracoes_sam/funcoes_calculo_subsidios.php';
+require_once 'conexao.php';
 
 // Verifica se o usuário está logado e tem um ID válido
 if (!isset($_SESSION['id_adm'])) {
@@ -172,6 +176,128 @@ foreach ($funcionarios as $f) {
     // Faltas = dias úteis até hoje - dias com ponto
     $faltas = $dias_uteis_ate_hoje - count($dias_com_ponto);
     if ($faltas < 0) $faltas = 0;
+    
+    // Buscar ausências justificadas para o mês
+    $sql_ausencias = "SELECT data_inicio, data_fim, dias_uteis, tipo_ausencia, status_justificacao 
+                      FROM ausencias 
+                      WHERE funcionario_id = ? 
+                      AND empresa_id = ? 
+                      AND status_justificacao IN ('aprovada', 'pendente')
+                      AND (
+                          (MONTH(data_inicio) = ? AND YEAR(data_inicio) = ?) OR
+                          (MONTH(data_fim) = ? AND YEAR(data_fim) = ?) OR
+                          (data_inicio <= ? AND data_fim >= ?)
+                      )";
+    $stmt_ausencias = $conn->prepare($sql_ausencias);
+    $data_inicio_mes = "$ano-$mes-01";
+    $data_fim_mes = date('Y-m-t', strtotime($data_inicio_mes));
+    $stmt_ausencias->bind_param('iiiiiiss', $id_fun, $empresa_id, $mes_num, $ano_num, $mes_num, $ano_num, $data_inicio_mes, $data_fim_mes);
+    $stmt_ausencias->execute();
+    $result_ausencias = $stmt_ausencias->get_result();
+    
+    // Debug temporário - remover depois
+    $total_ausencias_encontradas = $result_ausencias->num_rows;
+    
+    // Calcular total de subsídios ANTES do loop de ausências
+    $sql_subs_temp = "SELECT sp.nome, sp.valor_padrao, sf.valor FROM subsidios_funcionarios sf JOIN subsidios_padrao sp ON sf.subsidio_id = sp.id WHERE sf.funcionario_id = ? AND sf.ativo = 1";
+    $stmt_subs_temp = $conn->prepare($sql_subs_temp);
+    $stmt_subs_temp->bind_param('i', $id_fun);
+    $stmt_subs_temp->execute();
+    $result_subs_temp = $stmt_subs_temp->get_result();
+    $total_subs = 0;
+    while ($s = $result_subs_temp->fetch_assoc()) {
+        $valor = floatval($s['valor']);
+        if ($valor <= 0) {
+            $valor = floatval($s['valor_padrao']);
+        }
+        $total_subs += $valor;
+    }
+    
+    $dias_ausencias_justificadas = 0;
+    $ausencias_info = [];
+    $impacto_salarial_ausencias = [
+        'desconto_salario' => 0,
+        'desconto_subsidios' => 0,
+        'detalhes_por_tipo' => []
+    ];
+    
+    while ($ausencia = $result_ausencias->fetch_assoc()) {
+        $inicio = new DateTime($ausencia['data_inicio']);
+        $fim = new DateTime($ausencia['data_fim']);
+        $inicio_mes = new DateTime($data_inicio_mes);
+        $fim_mes = new DateTime($data_fim_mes);
+        
+        // Calcular sobreposição com o mês de referência
+        $inicio_efetivo = max($inicio, $inicio_mes);
+        $fim_efetivo = min($fim, $fim_mes);
+        
+        if ($inicio_efetivo <= $fim_efetivo) {
+            $dias_sobreposicao = 0;
+            $intervalo = new DateInterval('P1D');
+            $periodo = new DatePeriod($inicio_efetivo, $intervalo, $fim_efetivo->modify('+1 day'));
+            
+            foreach ($periodo as $data) {
+                $dia_semana = $data->format('N');
+                if ($dia_semana < 6) { // Dias úteis (segunda a sexta)
+                    $dias_sobreposicao++;
+                }
+            }
+            
+            $dias_ausencias_justificadas += $dias_sobreposicao;
+            $ausencias_info[] = [
+                'tipo' => $ausencia['tipo_ausencia'],
+                'dias' => $dias_sobreposicao,
+                'periodo' => $inicio_efetivo->format('d/m/Y') . ' - ' . $fim_efetivo->format('d/m/Y')
+            ];
+            
+            // Calcular impacto salarial específico para este tipo de ausência
+            $salario_base_func = floatval($f['salario_base']);
+            $impacto = calcularImpactoSalarialAusencia(
+                $ausencia['tipo_ausencia'], 
+                $dias_sobreposicao, 
+                $salario_base_func, 
+                $total_subs, 
+                $empresa_id, 
+                $conn,
+                $dias_uteis_mes
+            );
+            
+            // Acumular impactos
+            $impacto_salarial_ausencias['desconto_salario'] += $impacto['desconto_salario'];
+            $impacto_salarial_ausencias['desconto_subsidios'] += $impacto['desconto_subsidios'];
+            $impacto_salarial_ausencias['detalhes_por_tipo'][] = [
+                'tipo' => $ausencia['tipo_ausencia'],
+                'dias' => $dias_sobreposicao,
+                'impacto' => $impacto
+            ];
+        }
+    }
+    
+    // Buscar justificações de faltas passadas para o mês
+    $sql_justificacoes = "SELECT data_falta, tipo_justificacao, status 
+                          FROM justificacoes_faltas 
+                          WHERE funcionario_id = ? 
+                          AND empresa_id = ? 
+                          AND status IN ('aprovada', 'pendente')
+                          AND MONTH(data_falta) = ? 
+                          AND YEAR(data_falta) = ?";
+    $stmt_justificacoes = $conn->prepare($sql_justificacoes);
+    $stmt_justificacoes->bind_param('iiii', $id_fun, $empresa_id, $mes_num, $ano_num);
+    $stmt_justificacoes->execute();
+    $result_justificacoes = $stmt_justificacoes->get_result();
+    
+    $faltas_justificadas = 0;
+    while ($justificacao = $result_justificacoes->fetch_assoc()) {
+        $data_falta = new DateTime($justificacao['data_falta']);
+        $dia_semana = $data_falta->format('N');
+        if ($dia_semana < 6) { // Apenas dias úteis
+            $faltas_justificadas++;
+        }
+    }
+    
+    // Ajustar faltas considerando ausências justificadas
+    $faltas_nao_justificadas = max(0, $faltas - $dias_ausencias_justificadas - $faltas_justificadas);
+    
     // Calcular horas extras e noturnas usando funções centralizadas
     $horas_extras = calcularHorasExtrasFuncionario($registros_ponto, $jornada_diaria);
     $horas_extras_h = floor($horas_extras);
@@ -206,58 +332,30 @@ foreach ($funcionarios as $f) {
     $valor_total_phe = calcularValorTotalHorasExtras($valor_hora_extra, $horas_extras);
     $valor_subsidio_noturno = calcularValorNoturno($f['salario_base'], $horas_noturnas_decimal, $percentual_noturno, $jornada_diaria, $id_fun);
 
-    // Buscar subsídios do funcionário
-    $sql_subs = "SELECT sp.nome, sp.valor_padrao, sf.valor FROM subsidios_funcionarios sf JOIN subsidios_padrao sp ON sf.subsidio_id = sp.id WHERE sf.funcionario_id = ? AND sf.ativo = 1";
-    $stmt_subs = $conn->prepare($sql_subs);
-    $stmt_subs->bind_param('i', $id_fun);
-    $stmt_subs->execute();
-    $result_subs = $stmt_subs->get_result();
-    $subs_list = [];
-    $total_subs = 0;
-    while ($s = $result_subs->fetch_assoc()) {
-        $subs_list[] = $s['nome'];
-        $valor = floatval($s['valor']);
-        if ($valor <= 0) {
-            $valor = floatval($s['valor_padrao']);
-        }
-        $total_subs += $valor;
-    }
-
-    // Garantir que subsídios obrigatórios com valor > 0 apareçam na lista
-    $obrigatorios = ['noturno', 'horas_extras', 'risco', 'decimo_terceiro'];
-    $valores_obrigatorios = [
-        'noturno' => isset($dados_salariais) ? (isset($valor_subsidio_noturno) ? $valor_subsidio_noturno : 0) : 0,
-        'horas_extras' => isset($dados_salariais) ? (isset($valor_total_phe) ? $valor_total_phe : 0) : 0,
-        'risco' => isset($subs_valores['risco']) ? floatval($subs_valores['risco']) : 0,
-        'decimo_terceiro' => isset($valor_decimo_terceiro) ? $valor_decimo_terceiro : 0
-    ];
-    foreach ($obrigatorios as $ob) {
-        if (!in_array($ob, $subs_list) && $valores_obrigatorios[$ob] > 0.01) {
-            $subs_list[] = $ob;
-        }
-        // Se o valor for zero, remove da lista (caso tenha sido adicionado por erro)
-        if (($valores_obrigatorios[$ob] <= 0.01) && ($key = array_search($ob, $subs_list)) !== false) {
-            unset($subs_list[$key]);
-        }
-    }
-
-    // Cálculos intermediários
-    $salario_base = floatval($f['salario_base']);
-    $salario_dia = $dias_uteis_mes > 0 ? $salario_base / $dias_uteis_mes : 0;
-    $horas_mensais = $jornada_diaria * $dias_uteis_mes;
-    $salario_hora = $horas_mensais > 0 ? $salario_base / $horas_mensais : 0;
+    // Calcular salário ilíquido SEM descontos (usando salário base original)
+    $salario_iliquido = $f['salario_base'] + $total_subs + $valor_total_phe + $valor_subsidio_noturno;
     
-    $valor_hora_normal = $salario_hora;
-    $salario_iliquido = $salario_base + $total_subs + $valor_total_phe + $valor_subsidio_noturno;
-    $iss = $salario_base * 0.03;
-    $desconto_faltas = $salario_dia * $faltas;
-    $irt = calcularIRT($salario_base);
-    $total_descontos = $iss + $desconto_faltas + $irt;
+    // Calcular descontos usando o salário base original
+    $iss = $f['salario_base'] * 0.03;
+    $desconto_faltas = $f['salario_base'] / $dias_uteis_mes * $faltas_nao_justificadas;
+    $irt = calcularIRT($f['salario_base']);
+    
+    // IMPORTANTE: Desconto das ausências justificadas é aplicado DEPOIS do salário ilíquido
+    $desconto_ausencias_salario = $impacto_salarial_ausencias['desconto_salario'];
+    $desconto_ausencias_subsidios = $impacto_salarial_ausencias['desconto_subsidios'];
+    
+    // Desconto por faltas TOTAL (faltas não justificadas + ausências justificadas)
+    $desconto_faltas_total = $desconto_faltas + $desconto_ausencias_salario;
+    
+    // Total de descontos (incluindo ausências justificadas)
+    $total_descontos = $iss + $desconto_faltas_total + $irt + $desconto_ausencias_subsidios;
+    
+    // Salário líquido final (salário ilíquido MENOS todos os descontos)
     $salario_liquido = $salario_iliquido - $total_descontos;
     
-    // Calcular 13º mês
+    // Calcular 13º mês usando o salário base original
     $meses_trabalhados = 12; // Você pode ajustar isso baseado na data de admissão
-    $valor_decimo_terceiro = calcularDecimoTerceiro($salario_base, $meses_trabalhados);
+    $valor_decimo_terceiro = calcularDecimoTerceiro($f['salario_base'], $meses_trabalhados);
 
     // Buscar subsídios opcionais ativos
     $sql_subs = "SELECT sp.nome, sp.valor_padrao, sf.valor FROM subsidios_funcionarios sf JOIN subsidios_padrao sp ON sf.subsidio_id = sp.id WHERE sf.funcionario_id = ? AND sf.ativo = 1";
@@ -276,32 +374,78 @@ foreach ($funcionarios as $f) {
     if (isset($subs_valores['risco']) && floatval($subs_valores['risco']) > 0.01) $subs_list[] = 'risco';
     $subs_list = array_unique($subs_list);
 
+    // Criar explicações detalhadas dos cálculos
+    $explicacoes_calculo = [
+        'salario_base_original' => $f['salario_base'],
+        'desconto_ausencias' => $desconto_ausencias_salario,
+        'salario_base_ajustado' => $f['salario_base'] - $desconto_ausencias_salario,
+        'total_subs_original' => $total_subs,
+        'desconto_subsidios_ausencias' => $desconto_ausencias_subsidios,
+        'total_subs_ajustado' => $total_subs - $desconto_ausencias_subsidios,
+        'horas_extras_valor' => $valor_total_phe,
+        'subsidio_noturno_valor' => $valor_subsidio_noturno,
+        'salario_iliquido' => $salario_iliquido,
+        'iss_base' => $f['salario_base'],
+        'iss_percentual' => 0.03,
+        'iss_valor' => $iss,
+        'faltas_nao_justificadas' => $faltas_nao_justificadas,
+        'valor_falta_dia' => $f['salario_base'] / $dias_uteis_mes,
+        'desconto_faltas' => $desconto_faltas_total,
+        'irt_base' => $f['salario_base'],
+        'irt_valor' => $irt,
+        'total_descontos' => $total_descontos,
+        'salario_liquido' => $salario_liquido,
+        'valor_decimo_terceiro' => $valor_decimo_terceiro
+    ];
+
+    // Criar detalhes das ausências
+    $detalhes_ausencias = [];
+    foreach ($impacto_salarial_ausencias['detalhes_por_tipo'] as $detalhe) {
+        $detalhes_ausencias[] = [
+            'tipo' => $detalhe['tipo'],
+            'dias' => $detalhe['dias'],
+            'desconto_salario' => $detalhe['impacto']['desconto_salario'],
+            'desconto_subsidios' => $detalhe['impacto']['desconto_subsidios'],
+            'explicacao' => gerarExplicacaoAusencia($detalhe['tipo'], $detalhe['dias'], $f['salario_base'], $total_subs, $dias_uteis_mes)
+        ];
+    }
+
     $dados_salariais[] = [
         'num_mecanografico' => $f['num_mecanografico'],
         'nome' => $f['nome'],
         'foto' => $f['foto'],
         'cargo' => $cargo_nome,
-        'salario_base' => $salario_base,
+        'salario_base' => $f['salario_base'],
+        'salario_base_ajustado' => $f['salario_base'] - $desconto_ausencias_salario,
         'dias_uteis' => $dias_uteis_mes,
         'horas_por_dia' => $jornada_diaria,
         'qhe' => $dias_uteis_mes * $jornada_diaria,
-        'faltas' => $faltas,
+        'faltas' => $faltas_nao_justificadas,
+        'faltas_totais' => $faltas,
+        'ausencias_justificadas' => $dias_ausencias_justificadas,
+        'faltas_justificadas' => $faltas_justificadas,
+        'ausencias_info' => $ausencias_info,
+        'detalhes_ausencias' => $detalhes_ausencias,
         'horas_extras' => $horas_extras_fmt,
         'horas_noturnas' => $horas_noturnas_fmt,
-        'salario_dia' => $salario_dia,
-        'salario_hora' => $salario_hora,
+        'salario_dia' => ($f['salario_base'] - $desconto_ausencias_salario) / $dias_uteis_mes,
+        'salario_hora' => ($f['salario_base'] - $desconto_ausencias_salario) / ($jornada_diaria * $dias_uteis_mes),
         'valor_hora_extra' => $valor_hora_extra,
         'subs_list' => $subs_list,
         'total_subs' => $total_subs,
+        'total_subs_ajustado' => $total_subs - $desconto_ausencias_subsidios,
         'valor_total_phe' => $valor_total_phe,
         'salario_iliquido' => $salario_iliquido,
         'iss' => $iss,
-        'desconto_faltas' => $desconto_faltas,
+        'desconto_faltas' => $desconto_faltas_total,
         'irt' => $irt,
         'total_descontos' => $total_descontos,
         'salario_liquido' => $salario_liquido,
         'valor_subsidio_noturno' => $valor_subsidio_noturno,
-        'valor_decimo_terceiro' => $valor_decimo_terceiro
+        'valor_decimo_terceiro' => $valor_decimo_terceiro,
+        'total_faltas' => $faltas_nao_justificadas,
+        'impacto_salarial_ausencias' => $impacto_salarial_ausencias,
+        'explicacoes_calculo' => $explicacoes_calculo
     ];
 }
 
@@ -328,6 +472,7 @@ while ($row = $result->fetch_assoc()) {
     <link rel="stylesheet" href="all.css/registro3.css">
     <link rel="stylesheet" href="all.css/timer.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@100;200;300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Processamento Salarial</title>
 <style>
@@ -508,6 +653,86 @@ while ($row = $result->fetch_assoc()) {
         transition: opacity 0.15s;
         opacity: 0.95;
     }
+    
+    .ausencias-tooltip {
+        cursor: pointer;
+        color: #3EB489;
+        font-weight: 500;
+    }
+    
+    .ausencias-tooltip:hover {
+        color: #2e8c6a;
+    }
+    
+    .tooltip-inner {
+        max-width: 300px;
+        text-align: left;
+    }
+    #modalDetalhesCalculo {
+        z-index: 1060; /* Valor maior que o da sidebar */
+    }
+    .modal {
+        z-index: 2000 !important;
+    }
+    .ausencias-tooltip i.fa-info-circle {
+        color: #3EB489 !important;
+        margin-left: 5px;
+    }
+    .btn-calculadora {
+        border: 1.5px solid #3EB489 !important;
+        background: #e6f7f2 !important;
+        color: #3EB489 !important;
+        padding: 2px 8px;
+        border-radius: 6px;
+        transition: background 0.2s, color 0.2s;
+    }
+    .btn-calculadora:hover {
+        background: #3EB489 !important;
+        color: #fff !important;
+        border-color: #2e8c6a !important;
+    }
+    .tooltip {
+        z-index: 3000 !important;
+        margin: 12px !important;
+        pointer-events: auto;
+    }
+    .tooltip .tooltip-inner {
+        background: #222 !important;
+        color: #fff !important;
+        border-radius: 7px;
+        font-size: 14px;
+        opacity: 0.88;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+        padding: 10px 16px;
+        max-width: 320px;
+    }
+    .tooltip.bs-tooltip-auto[x-placement^=top] .arrow::before,
+    .tooltip.bs-tooltip-top .arrow::before {
+        border-top-color: #222 !important;
+    }
+    .btn-comprovante {
+        border: 1.5px solid #3EB489 !important;
+        background: #fff !important;
+        color: #3EB489 !important;
+        border-radius: 50%;
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px rgba(62,180,137,0.08);
+        transition: background 0.2s, color 0.2s, border 0.2s;
+        font-size: 18px;
+        padding: 0;
+    }
+    .btn-comprovante:hover {
+        background: #3EB489 !important;
+        color: #fff !important;
+        border-color: #2e8c6a !important;
+    }
+    .btn-comprovante i {
+        font-size: 18px;
+    }
 </style>
 </head>
 <body>
@@ -608,27 +833,23 @@ while ($row = $result->fetch_assoc()) {
                     <tr>
                         <!-- Informações do Colaborador -->
                         <th colspan="4">Informações do Colaborador</th>
-                        
                         <!-- Jornada de Trabalho -->
                         <th colspan="3">Jornada de Trabalho</th>
-                        
                         <!-- Subsídios Base -->
                         <th colspan="2">Subsídios Base</th>
-                        
                         <!-- Horas Extras -->
                         <th colspan="3">Horas Extras</th>
-                        
                         <!-- Horas Noturnas -->
                         <th colspan="3">Horas Noturnas</th>
-                        
                         <!-- Total Bruto -->
-                        <th>Total Bruto</th>
-                        
-                        <!-- Descontos -->
-                        <th colspan="4">Descontos</th>
-                        
+                        <th rowspan="2">Salário Ilíquido</th>
+                        <!-- Faltas/Ausências agrupadas -->
+                        <th colspan="3" style="border-bottom:2px solid #e0e0e0; text-align:center;">Faltas/Ausências</th>
+                        <!-- Descontos agrupados -->
+                        <th colspan="4" style="border-bottom:2px solid #e0e0e0; text-align:center;">Descontos</th>
                         <!-- Resultado Final -->
-                        <th>Resultado Final</th>
+                        <th rowspan="2">Salário Líquido</th>
+                        <th>Comprovante</th>
                     </tr>
                     <tr>
                         <!-- Informações do Colaborador -->
@@ -636,37 +857,43 @@ while ($row = $result->fetch_assoc()) {
                         <th>Nome</th>
                         <th>Cargo</th>
                         <th>Salário Base</th>
-                        
                         <!-- Jornada de Trabalho -->
                         <th>Dias Úteis</th>
                         <th>Horas/Dia</th>
                         <th>QHE</th>
-                        
                         <!-- Subsídios Base -->
                         <th>Subsídios</th>
                         <th>Total Subsídios</th>
-                        
                         <!-- Horas Extras -->
                         <th>Qtd. Horas Extras</th>
                         <th>Valor/Hora Extra</th>
                         <th>Subsídio HE</th>
-                        
                         <!-- Horas Noturnas -->
                         <th>Qtd. Horas Noturnas</th>
                         <th>Valor/Hora Noturna</th>
                         <th>Subsídio Noturno</th>
-                        
-                        <!-- Total Bruto -->
-                        <th>Salário Ilíquido</th>
-                        
-                        <!-- Descontos -->
+                        <!-- Faltas/Ausências subgrupos -->
+                        <th style="color:#e74c3c;">
+                            Não Justificadas
+                            <i class="fas fa-info-circle" style="color:#e74c3c;" data-bs-toggle="tooltip" title="Dias em que o colaborador faltou sem justificativa. Gera desconto no salário."></i>
+                        </th>
+                        <th style="color:#3EB489;">
+                            Justificadas
+                            <i class="fas fa-info-circle" style="color:#3EB489;" data-bs-toggle="tooltip" title="Dias de ausência com justificativa aprovada."></i>
+                        </th>
+                        <th style="color:#888;">
+                            Total
+                            <i class="fas fa-info-circle" style="color:#888;" data-bs-toggle="tooltip" title="Soma de todas as ausências."></i>
+                        </th>
+                        <!-- Descontos subgrupos -->
                         <th>ISS (3%)</th>
-                        <th>Faltas</th>
+                        <th>
+                            <span style="color:#e67e22;">Desconto por Faltas (Kz)</span>
+                            <i class="fas fa-info-circle" style="color:#e67e22;" data-bs-toggle="tooltip" title="Valor total descontado do salário por faltas e ausências (justificadas e não justificadas)."></i>
+                        </th>
                         <th>IRT</th>
                         <th>Total Descontos</th>
-                        
-                        <!-- Resultado Final -->
-                        <th>Salário Líquido</th>
+                        <th>Comprovante</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -684,12 +911,10 @@ while ($row = $result->fetch_assoc()) {
                         </td>
                         <td><?= htmlspecialchars($d['cargo']) ?></td>
                         <td><?= number_format($d['salario_base'], 2, ',', '.') ?></td>
-                        
                         <!-- Jornada de Trabalho -->
                         <td><?= $d['dias_uteis'] ?></td>
                         <td><?= $d['horas_por_dia'] ?></td>
                         <td><?= $d['qhe'] ?></td>
-                        
                         <!-- Subsídios Base -->
                         <td>
                             <?php foreach ($d['subs_list'] as $subs): ?>
@@ -718,28 +943,95 @@ while ($row = $result->fetch_assoc()) {
                             <?php endforeach; ?>
                         </td>
                         <td><?= number_format($d['total_subs'], 2, ',', '.') ?></td>
-                        
                         <!-- Horas Extras -->
                         <td><?= $d['horas_extras'] ?></td>
                         <td><?= number_format($d['valor_hora_extra'], 2, ',', '.') ?></td>
                         <td><?= number_format($d['valor_total_phe'], 2, ',', '.') ?></td>
-                        
                         <!-- Horas Noturnas -->
                         <td><?= $d['horas_noturnas'] ?></td>
                         <td><?= number_format($d['salario_hora'] * (1 + ($percentual_noturno / 100)), 2, ',', '.') ?></td>
                         <td><?= number_format($d['valor_subsidio_noturno'], 2, ',', '.') ?></td>
-                        
                         <!-- Total Bruto -->
-                        <td><?= number_format($d['salario_iliquido'], 2, ',', '.') ?></td>
-                        
+                        <td style="font-weight:bold;">
+                            <?php
+                            $cor = '';
+                            if ($d['salario_iliquido'] <= 0.01) {
+                                $cor = 'color:#e74c3c;'; // vermelho
+                            } elseif ($d['salario_iliquido'] >= $d['salario_base'] - 0.01) {
+                                $cor = 'color:#3EB489;'; // verde
+                            } else {
+                                $cor = 'color:#e67e22;'; // laranja
+                            }
+                            $tooltip = '';
+                            if (!empty($d['detalhes_ausencias'])) {
+                                $tooltip .= 'Ausências no mês:<br>';
+                                foreach ($d['detalhes_ausencias'] as $aus) {
+                                    $tipo = htmlspecialchars($aus['tipo']);
+                                    $dias = intval($aus['dias']);
+                                    $desc = '';
+                                    if ($aus['desconto_salario'] <= 0.01) {
+                                        $desc = '0% desconto';
+                                    } elseif ($aus['desconto_salario'] >= $d['salario_base'] - 0.01) {
+                                        $desc = '100% desconto';
+                                    } else {
+                                        $desc = number_format(100 * $aus['desconto_salario'] / $d['salario_base'], 0) . '% desconto';
+                                    }
+                                    $tooltip .= "+ $tipo: $dias dias — $desc<br>";
+                                }
+                            } else {
+                                $tooltip = 'Sem ausências impactando o salário.';
+                            }
+                            ?>
+                            <span style="<?= $cor ?>">
+                                <?= number_format($d['salario_iliquido'], 2, ',', '.') ?> Kz
+                                <i class="fas fa-info-circle" 
+                                   style="cursor:pointer;<?= $cor ?>margin-left:5px;"
+                                   data-bs-toggle="tooltip" 
+                                   data-bs-html="true"
+                                   title="<?= $tooltip ?>"
+                                   onclick="mostrarModalDetalhesAusencias(<?= htmlspecialchars(json_encode($d['detalhes_ausencias'])) ?>, '<?= htmlspecialchars($d['nome']) ?>', <?= $d['salario_base'] ?>)"></i>
+                            </span>
+                        </td>
+                        <!-- Faltas/Ausências -->
+                        <td style="color:#e74c3c; font-weight:600;">
+                            <?= $d['faltas'] ?>
+                        </td>
+                        <td style="color:#3EB489; font-weight:600;">
+                            <?php if ($d['ausencias_justificadas'] > 0): ?>
+                                <span class="ausencias-tooltip" 
+                                      data-bs-toggle="tooltip" 
+                                      data-bs-html="true"
+                                      title="<?php
+                                        echo '<strong>Ausências Justificadas:</strong> ' . $d['ausencias_justificadas'] . ' dias<br>';
+                                        if (!empty($d['ausencias_info'])) {
+                                            echo '<br><strong>Detalhes:</strong><br>';
+                                            foreach ($d['ausencias_info'] as $info) {
+                                                echo '• ' . htmlspecialchars($info['tipo']) . ': ' . $info['dias'] . ' dias (' . $info['periodo'] . ')<br>';
+                                            }
+                                        }
+                                      ?>">
+                                    <?= $d['ausencias_justificadas'] ?>
+                                    <i class="fas fa-info-circle"></i>
+                                </span>
+                            <?php else: ?>
+                                <?= $d['ausencias_justificadas'] ?>
+                            <?php endif; ?>
+                        </td>
+                        <td style="color:#888; font-weight:600;">
+                            <?= $d['faltas'] + $d['ausencias_justificadas'] ?>
+                        </td>
                         <!-- Descontos -->
-                        <td><?= number_format($d['iss'], 2, ',', '.') ?></td>
-                        <td><?= number_format($d['desconto_faltas'], 2, ',', '.') ?></td>
-                        <td><?= number_format($d['irt'], 2, ',', '.') ?></td>
-                        <td><?= number_format($d['total_descontos'], 2, ',', '.') ?></td>
-                        
+                        <td><?= number_format($d['iss'], 2, ',', '.') ?> Kz</td>
+                        <td><?= number_format($d['desconto_faltas'], 2, ',', '.') ?> Kz</td>
+                        <td><?= number_format($d['irt'], 2, ',', '.') ?> Kz</td>
+                        <td><?= number_format($d['total_descontos'], 2, ',', '.') ?> Kz</td>
                         <!-- Resultado Final -->
-                        <td><?= number_format($d['salario_liquido'], 2, ',', '.') ?></td>
+                        <td><?= number_format($d['salario_liquido'], 2, ',', '.') ?> Kz</td>
+                        <td style="text-align:center; display:flex; align-items:center; justify-content:center; height:100%;">
+                            <button class="btn-comprovante" title="Gerar comprovante de pagamento" onclick="gerarComprovantePagamento('<?= $d['num_mecanografico'] ?>')">
+                                <i class="fas fa-file-pdf"></i>
+                            </button>
+                        </td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -764,6 +1056,28 @@ while ($row = $result->fetch_assoc()) {
             </div>
         </div>
     </div>
+
+    <!-- Modal para Detalhes dos Cálculos -->
+    <div class="modal fade" id="modalDetalhesCalculo" tabindex="-1" aria-labelledby="modalDetalhesCalculoLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalDetalhesCalculoLabel">
+                        <i class="fas fa-calculator"></i> Detalhes dos Cálculos Salariais
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="detalhes-calculo-content">
+                        <!-- Conteúdo será preenchido via JavaScript -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
     <script>
     function updateTime() {
         const now = new Date();
@@ -776,8 +1090,14 @@ while ($row = $result->fetch_assoc()) {
     setInterval(updateTime, 1000);
     </script>
     <script src="js/theme.js"></script>
-    <script src="js/timer.js"></script>
+    <!-- <script src="js/timer.js"></script> -->
+    
+    <!-- SCRIPT DO BOOTSTRAP DEVE VIR ANTES DO SCRIPT DO MODAL -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
     <script>
+        // SCRIPT DO MODAL MOVIMOVido PARA CÁ
+
         // Função para atualizar o formulário automaticamente
         document.addEventListener('DOMContentLoaded', function() {
             // Seleciona todos os selects do formulário
@@ -791,409 +1111,236 @@ while ($row = $result->fetch_assoc()) {
                 });
             });
         });
-    </script>
-    <script>
-    // Função para salvar percentual do subsídio
-    async function salvarPercentualSubsidio(tipo, valor) {
-        try {
-            const response = await fetch('atualizar_subsidio_empresa.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    tipo: tipo,
-                    valor_padrao: valor,
-                    unidade: 'percentual'
-                })
-            });
+
+        // Função para mostrar detalhes dos cálculos
+        function mostrarDetalhesCalculo(explicacoes, detalhesAusencias) {
+            const modal = document.getElementById('modalDetalhesCalculo');
+            const content = document.getElementById('detalhes-calculo-content');
             
-            const data = await response.json();
-            if (data.success) {
-                mostrarMensagem('success', 'Percentual atualizado com sucesso!');
-            } else {
-                throw new Error(data.error || 'Erro ao atualizar percentual');
-            }
-        } catch (error) {
-            handleError(error, 'Erro ao atualizar percentual do subsídio');
-        }
-    }
-
-    // Atualizar os event listeners dos sliders
-    document.querySelectorAll('.custom-slider').forEach(slider => {
-        slider.addEventListener('change', function() {
-            const tipo = this.id.replace('slider-', '');
-            const valor = this.value;
-            salvarPercentualSubsidio(tipo, valor);
-        });
-    });
-    </script>
-    <script>
-    // Inicializar o modal
-    const modalFuncionarios = new bootstrap.Modal(document.getElementById('modalFuncionariosSubsidio'));
-
-    // Função para abrir o modal e buscar funcionários
-    function abrirModalFuncionariosSubs(tipo) {
-        const lista = document.getElementById('lista-funcionarios-subsidio');
-        lista.innerHTML = 'Carregando funcionários...';
-        
-        // Nome amigável do subsídio
-        const nomes = {
-            alimentacao: 'Alimentação',
-            transporte: 'Transporte',
-            comunicacao: 'Comunicação',
-            saude: 'Saúde / Seguro',
-            ferias: 'Férias',
-            decimo_terceiro: '13.º Mês',
-            noturno: 'Nocturno / Turno',
-            risco: 'Risco / Periculosidade'
-        };
-        const nomeSubsidio = nomes[tipo] || tipo;
-        
-        fetch('get_funcionarios_subsidio.php?tipo=' + tipo)
-            .then(async res => {
-                const data = await res.json();
-                if (!res.ok) {
-                    throw new Error(data.error || 'Erro ao buscar funcionários');
-                }
-                return data;
-            })
-            .then(data => {
-                if (!data.success || !Array.isArray(data.funcionarios)) {
-                    throw new Error('Formato de resposta inválido');
-                }
-
-                const funcionarios = data.funcionarios;
-                if(funcionarios.length === 0) {
-                    lista.innerHTML = '<div class="alert alert-info">Nenhum funcionário encontrado.</div>';
-                    return;
-                }
-                
-                let html = `<div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;'>
-                    <div style='font-weight:600; color:#3EB489; font-size:1.15em;'>Gerenciando Subsídio: ${nomeSubsidio}</div>
-                    <div style='display:flex; align-items:center; gap:10px;'>
-                        <span style='color:#666; font-size:0.95em;'>Ativar/Desativar Todos</span>
-                        <label class='toggle-switch'>
-                            <input type='checkbox' id='toggle-todos' onchange='toggleTodosFuncionarios("${tipo}", this)'>
-                            <span class='slider'></span>
-                        </label>
+            let html = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card mb-3">
+                            <div class="card-header bg-primary text-white">
+                                <h6 class="mb-0"><i class="fas fa-money-bill-wave"></i> Cálculo do Salário Base</h6>
+                            </div>
+                            <div class="card-body">
+                                <table class="table table-sm">
+                                    <tr>
+                                        <td><strong>Salário Base Original:</strong></td>
+                                        <td class="text-end">${formatarMoeda(explicacoes.salario_base_original)}</td>
+                                    </tr>
+                                    <tr class="table-warning">
+                                        <td><strong>Desconto por Ausências:</strong></td>
+                                        <td class="text-end text-danger">-${formatarMoeda(explicacoes.desconto_ausencias)}</td>
+                                    </tr>
+                                    <tr class="table-success">
+                                        <td><strong>Salário Base Ajustado:</strong></td>
+                                        <td class="text-end"><strong>${formatarMoeda(explicacoes.salario_base_ajustado)}</strong></td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
                     </div>
-                </div>`;
-                html += `<table class="table table-striped table-hover" style="border-radius:10px;overflow:hidden;min-width:600px;">
-                  <thead style="background:#f5f5f5;">
-                    <tr>
-                      <th style='padding:10px 12px;'>Nome</th>
-                      <th style='padding:10px 12px;'>Matrícula</th>
-                      <th style='padding:10px 12px;'>Cargo</th>
-                      <th style='padding:10px 12px;'>Departamento</th>
-                      <th style='padding:10px 12px;text-align:center;'>Subsídio</th>
-                    </tr>
-                  </thead>
-                  <tbody>`;
-                
-                funcionarios.forEach(f => {
-                    const terminado = f.estado && f.estado.toLowerCase() === 'terminado';
-                    const ativo = f.subsidios && f.subsidios[tipo] === true;
-                    html += `<tr style="background:${terminado ? '#ffebee' : (f.id%2===0?'#fafbfc':'#fff')}; color:${terminado ? '#c62828' : '#222'};"${terminado ? " title='Funcionário Terminado'" : ''}>
-                        <td style='padding:8px 12px;'>${f.nome}</td>
-                        <td style='padding:8px 12px;'>${f.num_mecanografico}</td>
-                        <td style='padding:8px 12px;'>${f.cargo}</td>
-                        <td style='padding:8px 12px;'>${f.departamento}</td>
-                        <td style='padding:8px 12px;text-align:center;'>
-                            <label class='toggle-switch' style='${terminado ? 'pointer-events:none;opacity:0.5;cursor:not-allowed;' : ''}'>
-                                <input type='checkbox' onchange='toggleSubsidioFuncionario(${f.id}, "${tipo}", this)' ${ativo ? 'checked' : ''} ${terminado ? 'disabled' : ''}>
-                                <span class='slider'></span>
-                            </label>
-                        </td>
-                    </tr>`;
-                });
-                
-                html += '</tbody></table>';
-                lista.innerHTML = html;
-            })
-            .catch(error => {
-                console.error('Erro:', error);
-                lista.innerHTML = `<div class="alert alert-danger">
-                    <strong>Erro ao carregar funcionários:</strong><br>
-                    ${error.message}<br>
-                    Por favor, tente novamente ou contate o suporte.
-                </div>`;
-            });
-        
-        modalFuncionarios.show();
-    }
-    </script>
-    <script>
-    // Função para carregar os valores dos subsídios
-    async function carregarValoresSubsidios() {
-        try {
-            const response = await fetch('verificar_subsidios.php');
-            const data = await response.json();
-            
-            if (data.success) {
-                console.log('Subsídios carregados:', data.subsidios); // Debug
-                
-                // Atualizar os sliders com os valores do banco
-                data.subsidios.forEach(subsidio => {
-                    if (subsidio.nome === 'noturno') {
-                        const slider = document.getElementById('slider-nocturno');
-                        const valorInfo = document.getElementById('valor-nocturno-info');
-                        if (slider && valorInfo) {
-                            slider.value = subsidio.valor_padrao;
-                            slider.dataset.id = subsidio.id; // Guardar o ID do subsídio
-                            valorInfo.textContent = `${subsidio.valor_padrao}%`;
-                            console.log('Slider noturno atualizado:', subsidio); // Debug
-                        }
-                    } else if (subsidio.nome === 'risco') {
-                        const slider = document.getElementById('slider-risco');
-                        const valorInfo = document.getElementById('valor-risco-info');
-                        if (slider && valorInfo) {
-                            slider.value = subsidio.valor_padrao;
-                            slider.dataset.id = subsidio.id; // Guardar o ID do subsídio
-                            valorInfo.textContent = `${subsidio.valor_padrao}%`;
-                            console.log('Slider risco atualizado:', subsidio); // Debug
-                        }
-                    }
-                });
-            } else {
-                throw new Error(data.error || 'Erro ao carregar subsídios');
-            }
-        } catch (error) {
-            handleError(error, 'Erro ao carregar valores dos subsídios');
-        }
-    }
+                    <div class="col-md-6">
+                        <div class="card mb-3">
+                            <div class="card-header bg-info text-white">
+                                <h6 class="mb-0"><i class="fas fa-gift"></i> Cálculo dos Subsídios</h6>
+                            </div>
+                            <div class="card-body">
+                                <table class="table table-sm">
+                                    <tr>
+                                        <td><strong>Subsídios Originais:</strong></td>
+                                        <td class="text-end">${formatarMoeda(explicacoes.total_subs_original)}</td>
+                                    </tr>
+                                    <tr class="table-warning">
+                                        <td><strong>Desconto por Ausências:</strong></td>
+                                        <td class="text-end text-danger">-${formatarMoeda(explicacoes.desconto_subsidios_ausencias)}</td>
+                                    </tr>
+                                    <tr class="table-success">
+                                        <td><strong>Subsídios Ajustados:</strong></td>
+                                        <td class="text-end"><strong>${formatarMoeda(explicacoes.total_subs_ajustado)}</strong></td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-    // Carregar valores quando a página carregar
-    document.addEventListener('DOMContentLoaded', carregarValoresSubsidios);
-    </script>
-    <script>
-    // Evento para abrir modal ao clicar no card do subsídio
-    document.querySelectorAll('.subsidio-card').forEach(card => {
-        card.style.cursor = 'pointer';
-        card.addEventListener('click', function(e) {
-            // Verifica se o clique foi no toggle switch ou seus elementos
-            const toggleSwitch = card.querySelector('.toggle-switch');
-            if (toggleSwitch && (e.target === toggleSwitch || toggleSwitch.contains(e.target))) {
-                return;
-            }
-            
-            // Verifica se o clique foi no input de valor
-            const inputValor = card.querySelector('.input-subsidio-mes');
-            if (inputValor && (e.target === inputValor || inputValor.contains(e.target))) {
-                return;
-            }
-            
-            // Verifica se o clique foi no slider
-            const slider = card.querySelector('.custom-slider');
-            if (slider && (e.target === slider || slider.contains(e.target))) {
-                return;
-            }
-            
-            // Para subsídios opcionais, verifica se está ativo
-            if (card.classList.contains('subsidio-opcional')) {
-                const toggle = card.querySelector('.toggle-subsidio');
-                if (!toggle.checked) {
-                    mostrarMensagem('warning', 'Ative o subsídio primeiro para gerenciar os funcionários');
-                    return;
-                }
-            }
-            
-            // Determina o tipo do subsídio
-            let tipo;
-            if (card.classList.contains('subsidio-opcional')) {
-                tipo = card.getAttribute('data-subsidio');
-            } else {
-                // Para subsídios obrigatórios, pega o nome do primeiro span
-                const nomeSpan = card.querySelector('span:first-child');
-                if (nomeSpan) {
-                    tipo = nomeSpan.textContent.trim().toLowerCase()
-                        .replace('13.º mês', 'decimo_terceiro')
-                        .replace('nocturno / turno', 'noturno')
-                        .replace('risco / periculosidade', 'risco')
-                        .replace('férias', 'ferias');
-                }
-            }
-            
-            if (tipo) {
-                abrirModalFuncionariosSubs(tipo);
-            }
-        });
-    });
-    </script>
-    <script>
-    // Evento para switches dos subsídios opcionais
-    document.querySelectorAll('.toggle-subsidio').forEach(toggle => {
-        toggle.addEventListener('change', async function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            const tipo = this.getAttribute('data-subsidio');
-            const ativo = this.checked;
-            
-            try {
-                const response = await fetch('atualizar_subsidio_empresa.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        tipo: tipo,
-                        ativo: ativo
-                    })
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card mb-3">
+                            <div class="card-header bg-success text-white">
+                                <h6 class="mb-0"><i class="fas fa-plus-circle"></i> Adições ao Salário</h6>
+                            </div>
+                            <div class="card-body">
+                                <table class="table table-sm">
+                                    <tr>
+                                        <td><strong>Horas Extras:</strong></td>
+                                        <td class="text-end">${formatarMoeda(explicacoes.horas_extras_valor)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Subsídio Noturno:</strong></td>
+                                        <td class="text-end">${formatarMoeda(explicacoes.subsidio_noturno_valor)}</td>
+                                    </tr>
+                                    <tr class="table-success">
+                                        <td><strong>Salário Ilíquido:</strong></td>
+                                        <td class="text-end"><strong>${formatarMoeda(explicacoes.salario_iliquido)}</strong></td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card mb-3">
+                            <div class="card-header bg-danger text-white">
+                                <h6 class="mb-0"><i class="fas fa-minus-circle"></i> Descontos</h6>
+                            </div>
+                            <div class="card-body">
+                                <table class="table table-sm">
+                                    <tr>
+                                        <td><strong>ISS (3%):</strong></td>
+                                        <td class="text-end text-danger">-${formatarMoeda(explicacoes.iss_valor)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Faltas (${explicacoes.faltas_nao_justificadas} dias):</strong></td>
+                                        <td class="text-end text-danger">-${formatarMoeda(explicacoes.desconto_faltas)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>IRT:</strong></td>
+                                        <td class="text-end text-danger">-${formatarMoeda(explicacoes.irt_valor)}</td>
+                                    </tr>
+                                    <tr class="table-danger">
+                                        <td><strong>Total Descontos:</strong></td>
+                                        <td class="text-end"><strong>-${formatarMoeda(explicacoes.total_descontos)}</strong></td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header bg-warning text-dark">
+                                <h6 class="mb-0"><i class="fas fa-calendar-times"></i> Detalhes das Ausências</h6>
+                            </div>
+                            <div class="card-body">
+            `;
+
+            if (detalhesAusencias && detalhesAusencias.length > 0) {
+                detalhesAusencias.forEach((ausencia, index) => {
+                    html += `
+                        <div class="alert alert-info mb-3">
+                            <h6 class="alert-heading">${ausencia.explicacao.titulo}</h6>
+                            <p class="mb-2">${ausencia.explicacao.explicacao}</p>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <small><strong>Cálculo Salário:</strong> ${ausencia.explicacao.calculo_salario}</small>
+                                </div>
+                                <div class="col-md-6">
+                                    <small><strong>Cálculo Subsídios:</strong> ${ausencia.explicacao.calculo_subsidios}</small>
+                                </div>
+                            </div>
+                            <hr class="my-2">
+                            <small class="text-muted"><strong>Base Legal:</strong> ${ausencia.explicacao.base_legal}</small>
+                        </div>
+                    `;
                 });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    mostrarMensagem('success', 'Subsídio atualizado com sucesso!');
-                } else if (data.requires_confirmation) {
-                    if (confirm(data.message)) {
-                        const responseConfirm = await fetch('atualizar_subsidio_empresa.php', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                                tipo: tipo,
-                                ativo: ativo,
-                                confirmed: true
-                            })
-                        });
-                        
-                        const dataConfirm = await responseConfirm.json();
-                        
-                        if (dataConfirm.success) {
-                            mostrarMensagem('success', 'Subsídio atualizado com sucesso!');
-                        } else {
-                            throw new Error(dataConfirm.error || 'Erro ao atualizar subsídio');
-                        }
+            } else {
+                html += '<p class="text-muted">Nenhuma ausência detalhada encontrada.</p>';
+            }
+
+            html += `
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <div class="alert alert-success">
+                            <h5 class="mb-0">
+                                <i class="fas fa-check-circle"></i> Salário Líquido Final: 
+                                <strong>${formatarMoeda(explicacoes.salario_liquido)}</strong>
+                            </h5>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            content.innerHTML = html;
+            
+            // Mostrar o modal
+            const bootstrapModal = new bootstrap.Modal(modal);
+            bootstrapModal.show();
+        }
+
+        // Função para formatar moeda
+        function formatarMoeda(valor) {
+            return new Intl.NumberFormat('pt-AO', {
+                style: 'currency',
+                currency: 'AOA',
+                minimumFractionDigits: 2
+            }).format(valor);
+        }
+
+        // Inicializar tooltips do Bootstrap 5
+        document.addEventListener('DOMContentLoaded', function () {
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+                new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        });
+
+        function mostrarModalDetalhesAusencias(detalhes, nome, salarioBase) {
+            let html = `<h5>Detalhes das Ausências de <b>${nome}</b></h5>`;
+            if (!detalhes || detalhes.length === 0) {
+                html += '<p>Sem ausências impactando o salário neste mês.</p>';
+            } else {
+                html += '<ul>';
+                detalhes.forEach(aus => {
+                    let desc = '';
+                    if (aus.desconto_salario <= 0.01) {
+                        desc = '0% desconto';
+                    } else if (aus.desconto_salario >= salarioBase - 0.01) {
+                        desc = '100% desconto';
                     } else {
-                        this.checked = !this.checked;
+                        desc = Math.round(100 * aus.desconto_salario / salarioBase) + '% desconto';
                     }
-                } else {
-                    throw new Error(data.error || 'Erro ao atualizar subsídio');
-                }
-            } catch (error) {
-                handleError(error, 'Erro ao atualizar subsídio');
-                this.checked = !this.checked;
+                    html += `<li><b>${aus.tipo}</b>: ${aus.dias} dias — ${desc}<br><small>${aus.explicacao.explicacao}</small></li>`;
+                });
+                html += '</ul>';
             }
-        });
-    });
-
-    // Função para ativar/desativar subsídio para funcionário
-    async function toggleSubsidioFuncionario(id, tipo, btn) {
-        btn.disabled = true;
-        
-        try {
-            const response = await fetch('atualizar_subsidio_funcionario.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    funcionario_id: id,
-                    tipo: tipo,
-                    ativo: btn.checked
-                })
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                mostrarMensagem('success', 'Subsídio atualizado para o funcionário!');
-            } else {
-                throw new Error(data.error || 'Erro ao atualizar subsídio do funcionário');
-            }
-        } catch (error) {
-            handleError(error, 'Erro ao atualizar subsídio do funcionário');
-            btn.checked = !btn.checked; // Reverter o toggle em caso de erro
-        } finally {
-            btn.disabled = false;
+            document.getElementById('modalDetalhesAusenciasBody').innerHTML = html;
+            let modal = new bootstrap.Modal(document.getElementById('modalDetalhesAusencias'));
+            modal.show();
         }
-    }
 
-    // Função para ativar/desativar todos os funcionários
-    async function toggleTodosFuncionarios(tipo, btn) {
-        const checkboxes = document.querySelectorAll(`#lista-funcionarios-subsidio input[type="checkbox"]:not([id="toggle-todos"])`);
-        const ativo = btn.checked;
-        
-        // Desabilitar todos os checkboxes durante a operação
-        checkboxes.forEach(cb => cb.disabled = true);
-        btn.disabled = true;
-        
-        try {
-            // Array para armazenar todas as promessas
-            const promises = Array.from(checkboxes).map(async (checkbox) => {
-                if (!checkbox.closest('tr').title) { // Ignora funcionários terminados
-                    const id = checkbox.getAttribute('onchange').match(/\d+/)[0];
-                    const response = await fetch('atualizar_subsidio_funcionario.php', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            funcionario_id: id,
-                            tipo: tipo,
-                            ativo: ativo
-                        })
-                    });
-                    
-                    const data = await response.json();
-                    if (!data.success) {
-                        throw new Error(data.error || 'Erro ao atualizar subsídio do funcionário');
-                    }
-                    
-                    checkbox.checked = ativo;
-                }
-            });
-            
-            // Aguarda todas as operações terminarem
-            await Promise.all(promises);
-            mostrarMensagem('success', 'Subsídios atualizados com sucesso!');
-        } catch (error) {
-            handleError(error, 'Erro ao atualizar subsídios');
-            // Reverter o toggle em caso de erro
-            btn.checked = !btn.checked;
-            checkboxes.forEach(cb => {
-                if (!cb.closest('tr').title) {
-                    cb.checked = !ativo;
-                }
-            });
-        } finally {
-            // Reabilitar todos os checkboxes
-            checkboxes.forEach(cb => cb.disabled = false);
-            btn.disabled = false;
+        function gerarComprovantePagamento(numMecanografico) {
+            const mesReferencia = '<?= $mes_referencia ?>';
+            const empresaId = '<?= $empresa_id ?>';
+            const url = `gerar_comprovante.php?num_mecanografico=${encodeURIComponent(numMecanografico)}&mes_referencia=${encodeURIComponent(mesReferencia)}&empresa_id=${encodeURIComponent(empresaId)}`;
+            window.open(url, '_blank');
         }
-    }
     </script>
-    <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Tooltip dinâmica para subsídios (estilo rh_config.php)
-        let tooltip = null;
-        document.querySelectorAll('.subs-tooltip').forEach(function(el) {
-            el.addEventListener('mouseenter', function(e) {
-                if (!tooltip) {
-                    tooltip = document.createElement('div');
-                    tooltip.className = 'subs-tooltip-box';
-                    document.body.appendChild(tooltip);
-                }
-                let unidade = el.dataset.tipo === 'opcional' ? 'Kz/mês' : 'Kz';
-                tooltip.textContent = `${el.dataset.subsidio}: ${el.dataset.valor} ${unidade}`;
-                tooltip.style.display = 'block';
-            });
-            el.addEventListener('mousemove', function(e) {
-                if (tooltip) {
-                    tooltip.style.left = (e.clientX + 15) + 'px';
-                    tooltip.style.top = (e.clientY + 10) + 'px';
-                }
-            });
-            el.addEventListener('mouseleave', function() {
-                if (tooltip) {
-                    tooltip.style.display = 'none';
-                }
-            });
-        });
-    });
-    </script>
+    <!-- Modal para detalhes das ausências -->
+    <div class="modal fade" id="modalDetalhesAusencias" tabindex="-1" aria-labelledby="modalDetalhesAusenciasLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="modalDetalhesAusenciasLabel">Detalhes das Ausências</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body" id="modalDetalhesAusenciasBody">
+            <!-- Conteúdo preenchido via JS -->
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+          </div>
+        </div>
+      </div>
+    </div>
 </body>
 </html> 
