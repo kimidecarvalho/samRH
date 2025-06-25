@@ -70,8 +70,25 @@ if (isset($_SESSION['google_access_token'])) {
 try {
     // Cria evento
     $service = new Google_Service_Calendar($client);
-    $startDateTime = $data_reuniao . 'T' . $hora . ':00';
-    $endDateTime = date('Y-m-d\TH:i:s', strtotime("$startDateTime +$duracao minutes"));
+
+    // Corrigir formato da data para ISO 8601
+    // Esperado: data_reuniao = '25/06/2025' ou '2025-06-25'
+    if (strpos($data_reuniao, '/') !== false) {
+        // Converter de dd/mm/yyyy para yyyy-mm-dd
+        [$dia, $mes, $ano] = explode('/', $data_reuniao);
+        $data_reuniao_iso = "$ano-$mes-$dia";
+    } else {
+        $data_reuniao_iso = $data_reuniao;
+    }
+    // Montar objeto DateTime para início
+    $startDateTimeObj = new DateTime("$data_reuniao_iso $hora:00", new DateTimeZone('America/Sao_Paulo'));
+    $endDateTimeObj = clone $startDateTimeObj;
+    $endDateTimeObj->modify("+{$duracao} minutes");
+    $startDateTime = $startDateTimeObj->format(DateTime::RFC3339);
+    $endDateTime = $endDateTimeObj->format(DateTime::RFC3339);
+
+    // Log para debug
+    error_log("Google Meet: start=$startDateTime, end=$endDateTime, email=$email, nome=$nome");
 
     $event = new Google_Service_Calendar_Event([
         'summary' => $titulo,

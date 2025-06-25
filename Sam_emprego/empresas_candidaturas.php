@@ -800,34 +800,6 @@ try {
                             <?php echo htmlspecialchars($candidatura['status']); ?>
                         </span>
                     </div>
-                    <?php
-                    // Calcular correspondência minimalista
-                    $percentual_correspondencia = null;
-                    $competencias_vaga = [];
-                    $competencias_candidato = [];
-                    // Buscar requisitos da vaga
-                    $stmt_req = $pdo->prepare("SELECT requisitos FROM vagas WHERE id = ?");
-                    $stmt_req->execute([$candidatura['vaga_id']]);
-                    $row_req = $stmt_req->fetch();
-                    if ($row_req && !empty($row_req['requisitos'])) {
-                        $competencias_vaga = array_map('trim', explode(',', strtolower($row_req['requisitos'])));
-                    }
-                    // Buscar habilidades do candidato
-                    if (!empty($candidatura['candidato_habilidades'])) {
-                        $competencias_candidato = array_map('trim', explode(',', strtolower($candidatura['candidato_habilidades'])));
-                    }
-                    if (!empty($competencias_vaga)) {
-                        $em_comum = array_intersect($competencias_vaga, $competencias_candidato);
-                        $percentual_correspondencia = round(count($em_comum) / count($competencias_vaga) * 100);
-                    }
-                    // Definir cor do badge
-                    $match_color = 'low';
-                    if ($percentual_correspondencia >= 70) {
-                        $match_color = 'high';
-                    } elseif ($percentual_correspondencia >= 40) {
-                        $match_color = 'medium';
-                    }
-                    ?>
                     <div class="card-content">
                         <div class="application-meta">
                             <i class="fas fa-calendar meta-icon"></i>
@@ -845,12 +817,6 @@ try {
                                     <span class="info-label">Nome:</span>
                                     <span class="info-value" data-type="nome">
                                         <?php echo htmlspecialchars($candidatura['candidato_nome']); ?>
-                                        <?php if ($percentual_correspondencia !== null): ?>
-                                            <span class="match-label-text">Match:</span>
-                                            <span class="match-badge match-badge-<?php echo $match_color; ?>" title="Compatibilidade entre o perfil do candidato e os requisitos da vaga">
-                                                <i class="fas fa-user-check"></i> <?php echo $percentual_correspondencia; ?>%
-                                            </span>
-                                        <?php endif; ?>
                                     </span>
                                 </div>
                                 <div class="info-item">
