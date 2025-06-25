@@ -137,6 +137,39 @@
             z-index: 1;
         }
 
+        .user-section {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .user-dropdown {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 50px;
+            transition: background-color 0.3s;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f5f5f5;
+        }
+
+        .user-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
         /* Responsividade */
         @media (max-width: 768px) {
             .page-header {
@@ -192,7 +225,7 @@
             <div class="user-section">
                 <div class="user-dropdown" id="userDropdownToggle">
                     <div class="user-avatar">
-                        <img src="../icones/icons-sam-19.svg" alt="" width="40">
+                    <img src="<?php echo !empty($empresa['logo']) ? htmlspecialchars($empresa['logo']) : 'sam2-05.png'; ?>" alt="Logo da Empresa" width="40">
                     </div>
                     <span><?php echo htmlspecialchars($empresa['nome'] ?? $_SESSION['empresa_nome']); ?></span>
                     <i class="fas fa-chevron-down dropdown-arrow"></i>
@@ -216,10 +249,12 @@
                 </div>
                 
                 <div class="settings-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3EB489" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <a href="configuracoes_empresa.php">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3EB489" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" >
                         <circle cx="12" cy="12" r="3"></circle>
                         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                     </svg>
+                    </a>
                 </div>
             </div>
         </div>
@@ -289,7 +324,7 @@
                     <div class="job-header"><?php echo htmlspecialchars($vaga['empresa_nome']); ?></div>
                     <div class="job-content">
                         <div class="job-logo">
-                            <img src="<?php echo htmlspecialchars($vaga['empresa_logo']); ?>" alt="<?php echo htmlspecialchars($vaga['empresa_nome']); ?> Logo">
+                            <img src="<?php echo !empty($vaga['empresa_logo']) ? htmlspecialchars($vaga['empresa_logo']) : 'sam2-05.png'; ?>" alt="<?php echo htmlspecialchars($vaga['empresa_nome']); ?> Logo">
                         </div>
                         <div class="job-details">
                             <div class="job-title"><?php echo htmlspecialchars($vaga['titulo']); ?></div>

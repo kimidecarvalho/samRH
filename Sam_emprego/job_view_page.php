@@ -82,6 +82,29 @@ try {
         'estagio' => 'Estágio'
     ];
 
+    // Buscar correspondência de competências se for candidato logado
+    $percentual_correspondencia = null;
+    $competencias_vaga = [];
+    $competencias_candidato = [];
+    if (isset($_SESSION['candidato_id'])) {
+        // Buscar habilidades do candidato
+        $stmt = $pdo->prepare("SELECT habilidades FROM candidatos WHERE id = ?");
+        $stmt->execute([$_SESSION['candidato_id']]);
+        $row = $stmt->fetch();
+        if ($row && !empty($row['habilidades'])) {
+            $competencias_candidato = array_map('trim', explode(',', strtolower($row['habilidades'])));
+        }
+        // Competências da vaga
+        if (!empty($vaga['requisitos'])) {
+            $competencias_vaga = array_map('trim', explode(',', strtolower($vaga['requisitos'])));
+        }
+        // Calcular correspondência
+        if (!empty($competencias_vaga)) {
+            $em_comum = array_intersect($competencias_vaga, $competencias_candidato);
+            $percentual_correspondencia = round(count($em_comum) / count($competencias_vaga) * 100);
+        }
+    }
+
 } catch (PDOException $e) {
     $erro = "Erro ao carregar dados: " . $e->getMessage();
 }
@@ -159,6 +182,241 @@ try {
       border-left: 4px solid #dc3545;
       color: #721c24;
     }
+/* Container principal da barra de correspondência */
+.match-bar-container {
+  background: linear-gradient(135deg, #f8fcfa 0%, #ffffff 100%);
+  border: 2px solid rgba(62, 180, 137, 0.15);
+  border-radius: 20px;
+  box-shadow: 
+    0 8px 25px rgba(62, 180, 137, 0.08),
+    0 3px 10px rgba(0, 0, 0, 0.02),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  padding: 1.8rem 2rem;
+  margin: 1.5rem auto 2.5rem auto;
+  width: 100%;
+  max-width: 1200px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+/* Efeito hover no container */
+.match-bar-container:hover {
+  transform: translateY(-2px);
+  box-shadow: 
+    0 12px 35px rgba(62, 180, 137, 0.12),
+    0 5px 15px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  border-color: rgba(62, 180, 137, 0.25);
+}
+
+/* Efeito de brilho sutil no fundo */
+.match-bar-container::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(62, 180, 137, 0.03) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Container interno */
+.match-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 480px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Cabeçalho com ícone e título */
+.match-header {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-bottom: 1rem;
+  animation: fadeInUp 0.6s ease-out;
+}
+
+.match-icon {
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+  background: linear-gradient(135deg, #3EB489, #32936F);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(62, 180, 137, 0.3);
+  animation: pulse 2s infinite;
+}
+
+.match-icon svg {
+  width: 20px;
+  height: 20px;
+  stroke: white;
+  stroke-width: 2.5;
+}
+
+.match-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  letter-spacing: 0.3px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* Container da barra de progresso */
+.match-progress-container {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.8rem;
+}
+
+.match-label {
+  color: #3EB489;
+  font-weight: 600;
+  font-size: 1rem;
+  min-width: 60px;
+  text-shadow: 0 1px 2px rgba(62, 180, 137, 0.2);
+}
+
+/* Barra de progresso */
+.match-progress-bar {
+  flex: 1;
+  background: linear-gradient(90deg, #e8e8e8, #f0f0f0);
+  border-radius: 50px;
+  overflow: hidden;
+  height: 36px;
+  box-shadow: 
+    inset 0 2px 4px rgba(0, 0, 0, 0.1),
+    0 1px 2px rgba(255, 255, 255, 0.8);
+  position: relative;
+}
+
+.match-progress-fill {
+  height: 36px;
+  background: linear-gradient(90deg, #3EB489 0%, #32936F 50%, #2d8660 100%);
+  border-radius: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: white;
+  padding-right: 20px;
+  min-width: 60px;
+  box-shadow: 
+    0 2px 8px rgba(62, 180, 137, 0.3),
+    inset 0 1px 2px rgba(255, 255, 255, 0.3);
+  transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  position: relative;
+}
+
+/* Efeito de brilho na barra */
+.match-progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  animation: shimmer 2s infinite;
+}
+
+/* Texto de informações adicionais */
+.match-info {
+  font-size: 1rem;
+  color: #555;
+  text-align: center;
+  font-weight: 500;
+  line-height: 1.4;
+  opacity: 0.9;
+}
+
+.match-info b {
+  color: #3EB489;
+  font-weight: 700;
+}
+
+/* Animações */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    left: -100%;
+  }
+  50%, 100% {
+    left: 100%;
+  }
+}
+
+/* Responsividade */
+@media (max-width: 640px) {
+  .match-bar-container {
+    margin: 1rem auto 2rem auto;
+    padding: 1.5rem 1.5rem;
+    max-width: 95%;
+  }
+  
+  .match-title {
+    font-size: 1.1rem;
+  }
+  
+  .match-progress-container {
+    gap: 0.8rem;
+  }
+  
+  .match-label {
+    min-width: 50px;
+    font-size: 0.9rem;
+  }
+  
+  .match-progress-bar {
+    height: 32px;
+  }
+  
+  .match-progress-fill {
+    height: 32px;
+    font-size: 1rem;
+    padding-right: 16px;
+  }
+  
+  .match-info {
+    font-size: 0.95rem;
+  }
+}
   </style>
   <title>SAM Emprego - <?php echo htmlspecialchars($vaga['titulo']); ?></title>
 </head>
@@ -252,7 +510,31 @@ try {
           </div>
         </div>
       </div>
-      
+<!-- Substituir o bloco PHP da barra de correspondência existente por este código melhorado -->
+    <?php if (isset($_SESSION['candidato_id']) && $percentual_correspondencia !== null): ?>
+      <div class="match-bar-container">
+        <div class="match-content">
+          <div class="match-header">
+            <div class="match-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9 12l2 2l4-4"/>
+              </svg>
+            </div>
+            <span class="match-title">Sua correspondência com esta vaga</span>
+          </div>
+          
+          <div class="match-progress-container">
+            <span class="match-label">Match</span>
+            <div class="match-progress-bar">
+              <div class="match-progress-fill" style="width: <?php echo $percentual_correspondencia; ?>%;">
+                <?php echo $percentual_correspondencia; ?>%
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    <?php endif; ?>
       <div class="job-card">
         <div class="section-card">
           <h2 class="section-title">Geral</h2>

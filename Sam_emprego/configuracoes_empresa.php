@@ -48,7 +48,7 @@ $logoPath = !empty($empresa['logo']) ? $empresa['logo'] : 'sam2-05.png';
 
     <link rel="stylesheet" href="../all.css/registro3.css">
     <link rel="stylesheet" href="../all.css/configuracoes.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <style>
         :root {
@@ -60,7 +60,7 @@ $logoPath = !empty($empresa['logo']) ? $empresa['logo'] : 'sam2-05.png';
         }
 
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: 'Poppins', sans-serif;     
             background-color: var(--background-light);
             color: var(--text-color);
         }
@@ -70,6 +70,14 @@ $logoPath = !empty($empresa['logo']) ? $empresa['logo'] : 'sam2-05.png';
             border-radius: 12px;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
             padding: 30px;
+        }
+        
+        .logo {
+            height: 80px;
+        }
+
+        .logo img {
+            height: 60px;
         }
 
         .profile-header {
@@ -87,7 +95,7 @@ $logoPath = !empty($empresa['logo']) ? $empresa['logo'] : 'sam2-05.png';
             object-fit: cover;
             margin-right: 30px;
             border: 4px solid var(--primary-color);
-            background-color: #3EB489;
+            background-color:rgb(255, 255, 255);
             cursor: pointer;
             transition: transform 0.3s ease;
         }
@@ -243,7 +251,7 @@ $logoPath = !empty($empresa['logo']) ? $empresa['logo'] : 'sam2-05.png';
         <div class="sidebar">
             <div class="logo">
                 <a href="painel_empresa.php">
-                    <img src="../img/sam2logo-32.png" alt="SAM Logo">
+                    <img src="../fotos/sam30-13.png" alt="SAM Logo">
                 </a>
             </div>
             <select class="nav-select">

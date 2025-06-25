@@ -617,7 +617,38 @@ try {
             color: #2d3748;
             margin-bottom: 8px;
         }
+        .user-section {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
 
+        .user-dropdown {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 50px;
+            transition: background-color 0.3s;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f5f5f5;
+        }
+
+        .user-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
         .address-input-container textarea {
             width: 100%;
             padding: 12px;
@@ -639,6 +670,63 @@ try {
         .address-input-container textarea::placeholder {
             color: #a0aec0;
         }
+
+        .mini-match-bar, .mini-match-bar-fill, .mini-match-bar-text {
+            display: none !important;
+        }
+        .match-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border-radius: 12px;
+            padding: 2px 8px 2px 6px;
+            margin-left: 8px;
+            background: #f0f0f0;
+            color: #3EB489;
+            box-shadow: 0 1px 4px rgba(62,180,137,0.07);
+            transition: background 0.2s, color 0.2s;
+        }
+        .match-badge i {
+            font-size: 0.95em;
+            margin-right: 2px;
+        }
+        .match-badge-high {
+            background: #e6f9f2;
+            color: #1e8c5b;
+        }
+        .match-badge-medium {
+            background: #fffbe6;
+            color: #bfa100;
+        }
+        .match-badge-low {
+            background: #fff0f0;
+            color: #d13a3a;
+        }
+        @media (max-width: 640px) {
+            .match-badge {
+                font-size: 0.8rem;
+                padding: 2px 6px 2px 5px;
+                margin-left: 5px;
+            }
+        }
+        .match-label-text {
+            font-size: 0.82rem;
+            color: #888;
+            font-weight: 500;
+            margin-left: 10px;
+            margin-right: 2px;
+            letter-spacing: 0.01em;
+            vertical-align: middle;
+        }
+        @media (max-width: 640px) {
+            .match-label-text {
+                font-size: 0.78rem;
+                margin-left: 6px;
+                margin-right: 1px;
+            }
+        }
     </style>
     <title>Candidaturas - SAM Emprego</title>
 </head>
@@ -659,7 +747,7 @@ try {
             <div class="user-section">
                 <div class="user-dropdown" id="userDropdownToggle">
                     <div class="user-avatar">
-                        <img src="../icones/icons-sam-19.svg" alt="" width="40">
+                        <img src="<?php echo !empty($empresa['logo']) ? htmlspecialchars($empresa['logo']) : 'sam2-05.png'; ?>" alt="Logo da Empresa" width="40">
                     </div>
                     <span><?php echo htmlspecialchars($empresa['nome'] ?? $_SESSION['empresa_nome']); ?></span>
                     <i class="fas fa-chevron-down dropdown-arrow"></i>
@@ -683,10 +771,12 @@ try {
                 </div>
                 
                 <div class="settings-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3EB489" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <a href="configuracoes_empresa.php">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3EB489" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" >
                         <circle cx="12" cy="12" r="3"></circle>
                         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                     </svg>
+                    </a>
                 </div>
             </div>
         </div>
@@ -710,7 +800,34 @@ try {
                             <?php echo htmlspecialchars($candidatura['status']); ?>
                         </span>
                     </div>
-                    
+                    <?php
+                    // Calcular correspondência minimalista
+                    $percentual_correspondencia = null;
+                    $competencias_vaga = [];
+                    $competencias_candidato = [];
+                    // Buscar requisitos da vaga
+                    $stmt_req = $pdo->prepare("SELECT requisitos FROM vagas WHERE id = ?");
+                    $stmt_req->execute([$candidatura['vaga_id']]);
+                    $row_req = $stmt_req->fetch();
+                    if ($row_req && !empty($row_req['requisitos'])) {
+                        $competencias_vaga = array_map('trim', explode(',', strtolower($row_req['requisitos'])));
+                    }
+                    // Buscar habilidades do candidato
+                    if (!empty($candidatura['candidato_habilidades'])) {
+                        $competencias_candidato = array_map('trim', explode(',', strtolower($candidatura['candidato_habilidades'])));
+                    }
+                    if (!empty($competencias_vaga)) {
+                        $em_comum = array_intersect($competencias_vaga, $competencias_candidato);
+                        $percentual_correspondencia = round(count($em_comum) / count($competencias_vaga) * 100);
+                    }
+                    // Definir cor do badge
+                    $match_color = 'low';
+                    if ($percentual_correspondencia >= 70) {
+                        $match_color = 'high';
+                    } elseif ($percentual_correspondencia >= 40) {
+                        $match_color = 'medium';
+                    }
+                    ?>
                     <div class="card-content">
                         <div class="application-meta">
                             <i class="fas fa-calendar meta-icon"></i>
@@ -718,7 +835,6 @@ try {
                                 Candidatura enviada em <?php echo date('d/m/Y às H:i', strtotime($candidatura['data_candidatura'])); ?>
                             </span>
                         </div>
-
                         <div class="candidate-summary">
                             <div class="info-group">
                                 <h4>
@@ -727,7 +843,15 @@ try {
                                 </h4>
                                 <div class="info-item">
                                     <span class="info-label">Nome:</span>
-                                    <span class="info-value" data-type="nome"><?php echo htmlspecialchars($candidatura['candidato_nome']); ?></span>
+                                    <span class="info-value" data-type="nome">
+                                        <?php echo htmlspecialchars($candidatura['candidato_nome']); ?>
+                                        <?php if ($percentual_correspondencia !== null): ?>
+                                            <span class="match-label-text">Match:</span>
+                                            <span class="match-badge match-badge-<?php echo $match_color; ?>" title="Compatibilidade entre o perfil do candidato e os requisitos da vaga">
+                                                <i class="fas fa-user-check"></i> <?php echo $percentual_correspondencia; ?>%
+                                            </span>
+                                        <?php endif; ?>
+                                    </span>
                                 </div>
                                 <div class="info-item">
                                     <span class="info-label">Email:</span>

@@ -10,19 +10,32 @@ if (!isset($_SESSION['empresa_id'])) {
 }
 
 try {
+    // Validação da data de expiração
+    if (!empty($_POST['data_expiracao'])) {
+        $hoje = date('Y-m-d');
+        if ($_POST['data_expiracao'] < $hoje) {
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => false,
+                'message' => 'A data de expiração não pode ser no passado.'
+            ]);
+            exit();
+        }
+    }
+
     // Preparar os dados para inserção
     $dados = [
         'empresa_id' => $_SESSION['empresa_id'],
         'titulo' => $_POST['job_title'],
         'descricao' => $_POST['job_description'],
-        'requisitos' => $_POST['requisitos'] ?? null,
+        'requisitos' => $_POST['competencias'] ?? null,
         'departamento' => $_POST['job_category'],
         'localizacao' => $_POST['job_location'],
         'tipo_contrato' => $_POST['job_type'],
         'salario_min' => $_POST['salary_min'] ? floatval($_POST['salary_min']) : null,
         'salario_max' => $_POST['salary_max'] ? floatval($_POST['salary_max']) : null,
         'data_expiracao' => !empty($_POST['data_expiracao']) ? $_POST['data_expiracao'] : null,
-        'status' => $_POST['job_status'] === 'open' ? 'Aberta' : 'Fechada',
+        'status' => $_POST['job_status'] ?? 'Aberta',
         'categoria' => $_POST['job_category'],
         'localizacao_tipo' => $_POST['localizacao_tipo'],
         'periodo_salario' => $_POST['salary_period'],

@@ -78,7 +78,34 @@ $stmt_contratacoes->execute();
 $contratacoes_este_mes = $stmt_contratacoes->get_result()->fetch_assoc()['total_contratacoes'];
 
 // 5. Get Recent Jobs - Updated query with better sorting and limit
-$stmt_vagas_recentes = $conn->prepare("
+$filtros = [];
+$params = [];
+$types = '';
+
+if (!empty($_GET['filtro_titulo'])) {
+    $filtros[] = 'v.titulo LIKE ?';
+    $params[] = '%' . $_GET['filtro_titulo'] . '%';
+    $types .= 's';
+}
+if (!empty($_GET['filtro_status'])) {
+    $filtros[] = 'v.status = ?';
+    $params[] = $_GET['filtro_status'];
+    $types .= 's';
+}
+if (!empty($_GET['filtro_departamento'])) {
+    $filtros[] = 'v.departamento LIKE ?';
+    $params[] = '%' . $_GET['filtro_departamento'] . '%';
+    $types .= 's';
+}
+
+$where = 'v.empresa_id = ?';
+$params = array_merge([$empresa_id_emprego], $params);
+$types = 'i' . $types;
+if ($filtros) {
+    $where .= ' AND ' . implode(' AND ', $filtros);
+}
+
+$sql_vagas = "
     SELECT 
         v.*, 
         COUNT(c.id) as total_candidaturas,
@@ -87,12 +114,13 @@ $stmt_vagas_recentes = $conn->prepare("
     FROM sam_emprego.vagas v
     LEFT JOIN sam_emprego.candidaturas c ON v.id = c.vaga_id
     LEFT JOIN sam_emprego.candidatos cand ON c.candidato_id = cand.id
-    WHERE v.empresa_id = ?
+    WHERE $where
     GROUP BY v.id
     ORDER BY v.data_publicacao DESC, v.id DESC
     LIMIT 5
-");
-$stmt_vagas_recentes->bind_param("i", $empresa_id_emprego);
+";
+$stmt_vagas_recentes = $conn->prepare($sql_vagas);
+$stmt_vagas_recentes->bind_param($types, ...$params);
 $stmt_vagas_recentes->execute();
 $vagas_recentes = $stmt_vagas_recentes->get_result();
 
@@ -281,7 +309,7 @@ while ($row = $result_status->fetch_assoc()) {
         }
         
         .btn {
-            padding: 10px 20px;
+            padding: 8px 20px;
             border-radius: 25px;
             border: none;
             font-weight: 500;
@@ -294,6 +322,7 @@ while ($row = $result_status->fetch_assoc()) {
         .btn-primary {
             background-color: #64c2a7;
             color: white;
+            text-decoration:none;
         }
         
         .btn-secondary {
@@ -535,15 +564,46 @@ while ($row = $result_status->fetch_assoc()) {
         </header>
 
         <div class="action-buttons">
-            <button class="btn btn-primary">
+            <a href="Sam_emprego/nova_vaga_recrutamento.php" class="btn btn-primary">
                 <i class="fas fa-plus"></i> Nova Vaga
-            </button>
-            <button class="btn btn-secondary">
+            </a>
+            <button class="btn btn-secondary" id="openFilterModal" type="button">
                 <i class="fas fa-filter"></i> Filtrar
             </button>
             <button class="btn btn-secondary">
                 <i class="fas fa-file-export"></i> Exportar Relatório
             </button>
+        </div>
+
+        <!-- Modal de Filtro -->
+        <div id="filterModal" style="display:none; position:fixed; z-index:1001; left:0; top:0; width:100vw; height:100vh; background:rgba(0,0,0,0.3); align-items:center; justify-content:center;">
+            <div style="background:#fff; border-radius:12px; max-width:400px; width:90%; margin:auto; padding:2rem; position:relative; box-shadow:0 8px 32px rgba(0,0,0,0.18);">
+                <button type="button" id="closeFilterModal" style="position:absolute; top:10px; right:15px; background:none; border:none; font-size:1.5rem; color:#888; cursor:pointer;">&times;</button>
+                <h2 style="margin-bottom:1.5rem; font-size:1.3rem; color:#333;">Filtrar Vagas</h2>
+                <form method="get" action="" id="filterForm">
+                    <div class="form-group" style="margin-bottom:1rem;">
+                        <label for="filtro_titulo">Título</label>
+                        <input type="text" id="filtro_titulo" name="filtro_titulo" class="form-control" value="<?php echo htmlspecialchars($_GET['filtro_titulo'] ?? ''); ?>">
+                    </div>
+                    <div class="form-group" style="margin-bottom:1rem;">
+                        <label for="filtro_status">Status</label>
+                        <select id="filtro_status" name="filtro_status" class="form-control">
+                            <option value="">Todos</option>
+                            <option value="Aberta" <?php if(($_GET['filtro_status'] ?? '')=='Aberta') echo 'selected'; ?>>Aberta</option>
+                            <option value="Fechada" <?php if(($_GET['filtro_status'] ?? '')=='Fechada') echo 'selected'; ?>>Fechada</option>
+                            <option value="Pausada" <?php if(($_GET['filtro_status'] ?? '')=='Pausada') echo 'selected'; ?>>Pausada</option>
+                            <option value="Rascunho" <?php if(($_GET['filtro_status'] ?? '')=='Rascunho') echo 'selected'; ?>>Rascunho</option>
+                            <option value="Em análise" <?php if(($_GET['filtro_status'] ?? '')=='Em análise') echo 'selected'; ?>>Em análise</option>
+                            <option value="Finalizada" <?php if(($_GET['filtro_status'] ?? '')=='Finalizada') echo 'selected'; ?>>Finalizada</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:1.5rem;">
+                        <label for="filtro_departamento">Departamento</label>
+                        <input type="text" id="filtro_departamento" name="filtro_departamento" class="form-control" value="<?php echo htmlspecialchars($_GET['filtro_departamento'] ?? ''); ?>">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;">Aplicar Filtros</button>
+                </form>
+            </div>
         </div>
 
         <!-- Cards de estatísticas -->
@@ -767,6 +827,17 @@ while ($row = $result_status->fetch_assoc()) {
                 }
             });
         });
+
+        document.getElementById('openFilterModal').onclick = function() {
+            document.getElementById('filterModal').style.display = 'flex';
+        };
+        document.getElementById('closeFilterModal').onclick = function() {
+            document.getElementById('filterModal').style.display = 'none';
+        };
+        // Fechar modal ao clicar fora
+        document.getElementById('filterModal').onclick = function(e) {
+            if (e.target === this) this.style.display = 'none';
+        };
     </script>
     <script src="./js/theme.js"></script>
 </body>

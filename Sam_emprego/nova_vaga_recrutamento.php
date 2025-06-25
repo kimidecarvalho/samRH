@@ -3,24 +3,42 @@ session_start();
 
 // Verificar se o usuário está autenticado
 if (!isset($_SESSION['id_empresa']) && !isset($_SESSION['empresa_id'])) {
-    header("Location: login.php");
-    exit;
-}
-
-require_once 'config/database.php';
-
-// Buscar informações da empresa usando o ID da sessão
-try {
-    $empresa_id = isset($_SESSION['empresa_id']) ? $_SESSION['empresa_id'] : $_SESSION['id_empresa'];
-    $stmt = $pdo->prepare("SELECT nome FROM empresas_recrutamento WHERE id = ?");
-    $stmt->execute([$empresa_id]);
-    $empresa = $stmt->fetch();
-    
-    if (!$empresa) {
+    // Tenta usar a sessão de recrutamento.php
+    if (isset($_SESSION['id_adm'])) {
+        // A lógica de `recrutamento.php` para obter o id da empresa pode ser necessária aqui
+        // Por agora, vamos assumir que id_empresa está na sessão
+    } else {
         header("Location: login.php");
         exit;
     }
-} catch (PDOException $e) {
+}
+
+// Adaptação para usar a conexão mysqli de `conexao.php`
+require_once 'conexao.php'; 
+
+// Buscar informações da empresa usando o ID da sessão
+try {
+    $empresa_id = isset($_SESSION['empresa_id']) ? $_SESSION['empresa_id'] : (isset($_SESSION['id_empresa']) ? $_SESSION['id_empresa'] : null);
+    
+    if (!$empresa_id) {
+        // Se o id da empresa não estiver em nenhuma das sessões esperadas,
+        // pode ser necessário buscar com base no id_adm, como em recrutamento.php
+        echo "ID da empresa não encontrado na sessão.";
+        exit;
+    }
+
+    $stmt = $conn->prepare("SELECT nome FROM empresas_recrutamento WHERE id = ?");
+    $stmt->bind_param("i", $empresa_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $empresa = $result->fetch_assoc();
+    
+    if (!$empresa) {
+        // Redireciona para o login se a empresa não for encontrada
+        header("Location: login.php");
+        exit;
+    }
+} catch (Exception $e) {
     $erro = "Erro ao carregar dados: " . $e->getMessage();
 }
 ?>
@@ -682,7 +700,7 @@ try {
           <div class="user-avatar">
             <img src="../icones/icons-sam-19.svg" alt="User Avatar" width="32">
           </div>
-          <span>Josilde da Co...</span>
+          <span><?php echo htmlspecialchars($_SESSION['nome']); ?></span>
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left: auto;">
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
@@ -696,15 +714,15 @@ try {
       </div>
     </div>
 
-    <a href="painel_empresa.php" class="back-link">
+    <a href="../recrutamento.php" class="back-link">
       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <line x1="19" y1="12" x2="5" y2="12"></line>
         <polyline points="12 19 5 12 12 5"></polyline>
       </svg>
-      Voltar à gestão de vagas
+      Voltar ao painel de recrutamento
     </a>
     
-    <form action="save_job.php" method="post" class="form-container" id="job-form" onsubmit="return false;">
+    <form action="save_job.php" method="post" class="form-container" id="job-form">
       <h1 class="form-title">Cadastrar Nova Vaga</h1>
       
       <div class="progress-indicator">
@@ -1076,7 +1094,7 @@ try {
         // Cancel button functionality
         document.getElementById('cancel-button').addEventListener('click', function() {
             if (confirm('Tem certeza que deseja cancelar? Todas as alterações serão perdidas.')) {
-                window.location.href = 'painel_empresa.php';
+                window.location.href = '../recrutamento.php';
             }
         });
         
@@ -1129,7 +1147,7 @@ try {
                     toastMessage.textContent = data.message;
                     
                     setTimeout(() => {
-                        window.location.href = 'painel_empresa.php';
+                        window.location.href = '../recrutamento.php';
                     }, 2000);
                 } else {
                     throw new Error(data.message);
@@ -1223,4 +1241,4 @@ try {
     }
   </script>
 </body>
-</html>
+</html> 

@@ -270,7 +270,7 @@ unset($_SESSION['erros_registro_completo']);
                                 <div class="competencias-label">
                                     Competências
                                     <br>
-                                    <small>Escreva a competência e clique em "Enter".</small>
+                                    <small>Escolha uma competência da lista e clique em "Enter".</small>
                                 </div>
                                 <div class="tag-container" id="tag-container">
                                     <!-- As tags serão adicionadas via JavaScript -->
@@ -278,7 +278,29 @@ unset($_SESSION['erros_registro_completo']);
                                 <input type="hidden" name="habilidades" id="habilidades-input">
                             </div>
                             <div class="right-column">
-                                <input type="text" id="new-tag" class="form-control" placeholder="Programação" onkeydown="if(event.key === 'Enter') { event.preventDefault(); addTag(); }">
+                                <input type="text" id="new-tag" class="form-control" placeholder="Selecione ou digite..." list="competencias-list" onkeydown="if(event.key === 'Enter') { event.preventDefault(); addTag(); }">
+                                <datalist id="competencias-list">
+                                    <option value="Frontend">
+                                    <option value="Backend">
+                                    <option value="DevOps">
+                                    <option value="UI/UX Design">
+                                    <option value="Mobile">
+                                    <option value="Data Science">
+                                    <option value="Machine Learning">
+                                    <option value="Cloud Computing">
+                                    <option value="Segurança da Informação">
+                                    <option value="QA/Testes">
+                                    <option value="Gestão de Projetos">
+                                    <option value="Suporte Técnico">
+                                    <option value="Redes">
+                                    <option value="Banco de Dados">
+                                    <option value="Marketing Digital">
+                                    <option value="Vendas">
+                                    <option value="RH">
+                                    <option value="Administrativo">
+                                    <option value="Finanças">
+                                    <option value="Atendimento ao Cliente">
+                                </datalist>
                             </div>
                         </div>
                     </div>
@@ -292,6 +314,30 @@ unset($_SESSION['erros_registro_completo']);
     </div>
 
     <script>
+        // Lista de competências permitidas
+        const competenciasPermitidas = [
+            "Frontend",
+            "Backend",
+            "DevOps",
+            "UI/UX Design",
+            "Mobile",
+            "Data Science",
+            "Machine Learning",
+            "Cloud Computing",
+            "Segurança da Informação",
+            "QA/Testes",
+            "Gestão de Projetos",
+            "Suporte Técnico",
+            "Redes",
+            "Banco de Dados",
+            "Marketing Digital",
+            "Vendas",
+            "RH",
+            "Administrativo",
+            "Finanças",
+            "Atendimento ao Cliente"
+        ];
+
         // Lista de tags/habilidades
         let tags = [];
         
@@ -299,14 +345,16 @@ unset($_SESSION['erros_registro_completo']);
         function addTag() {
             const input = document.getElementById('new-tag');
             const tagText = input.value.trim();
-            
-            if (tagText && !tags.includes(tagText)) {
+            // Só permite adicionar se estiver na lista de competências permitidas
+            if (tagText && competenciasPermitidas.includes(tagText) && !tags.includes(tagText)) {
                 tags.push(tagText);
                 renderTags();
                 input.value = '';
-                
                 // Atualiza o campo oculto com as habilidades
                 document.getElementById('habilidades-input').value = tags.join(', ');
+            } else if (tagText && !competenciasPermitidas.includes(tagText)) {
+                alert('Por favor, selecione uma competência válida da lista.');
+                input.value = '';
             }
         }
         

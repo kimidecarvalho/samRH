@@ -367,7 +367,7 @@ try {
                     <div class="job-header"><?php echo htmlspecialchars($vaga['empresa_nome']); ?></div>
                     <div class="job-content">
                         <div class="job-logo">
-                            <img src="<?php echo $vaga['empresa_logo'] ? htmlspecialchars($vaga['empresa_logo']) : '../fotos/sam30-13.png'; ?>" 
+                            <img src="<?php echo !empty($vaga['empresa_logo']) ? htmlspecialchars($vaga['empresa_logo']) : 'sam2-05.png'; ?>" 
                                  alt="<?php echo htmlspecialchars($vaga['empresa_nome']); ?> Logo">
                         </div>
                         <div class="job-details">
