@@ -6,7 +6,10 @@ if (isset($_GET['folder']) && isset($_GET['employeeId'])) {
     $folder = $_GET['folder'];
     $employeeId = $_GET['employeeId'];
 
-    $sql = "SELECT titulo, tipo, data, descricao, anexo, num_funcionario FROM documentos WHERE folder = ? AND num_funcionario = ?";
+    $sql = "SELECT d.titulo, d.tipo, d.data, d.descricao, d.anexo, SUBSTRING(f.num_mecanografico, 5) as numero_id 
+            FROM documentos d 
+            INNER JOIN funcionario f ON d.num_funcionario = f.id_fun 
+            WHERE d.folder = ? AND d.num_funcionario = ?";
     $stmt = mysqli_prepare($conn, $sql);
     mysqli_stmt_bind_param($stmt, 'si', $folder, $employeeId);
     mysqli_stmt_execute($stmt);

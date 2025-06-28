@@ -1,7 +1,7 @@
 {
     "require": {
-        "phpmailer/phpmailer": "^6.10",
         "tecnickcom/tcpdf": "^6.10",
-        "google/apiclient": "*"
+        "google/apiclient": "*",
+        "phpmailer/phpmailer": "^6.10"
     }
 }

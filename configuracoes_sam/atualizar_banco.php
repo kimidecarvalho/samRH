@@ -26,14 +26,61 @@ if (isset($_POST['ativo'])) {
     // Atualização de status
     $id = $_POST['id'] ?? 0;
     $ativo = $_POST['ativo'] ?? 0;
+    $isPredefinido = isset($_POST['predefinido']) && $_POST['predefinido'] == '1';
 
     if (!$id) {
         die(json_encode(['success' => false, 'message' => 'ID do banco não fornecido']));
     }
 
-    $sql = "UPDATE bancos_ativos SET ativo = ? WHERE id = ? AND empresa_id = ?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("iii", $ativo, $id, $empresa_id);
+    if ($isPredefinido) {
+        // Para bancos predefinidos não cadastrados, criar novo registro
+        $banco_nome = $_POST['banco_nome'] ?? '';
+        $banco_codigo = $_POST['banco_codigo'] ?? '';
+        
+        if (!$banco_nome || !$banco_codigo) {
+            die(json_encode(['success' => false, 'message' => 'Dados do banco predefinido incompletos']));
+        }
+        
+        // Verificar se já existe um banco com o mesmo nome ou código
+        $sql_check = "SELECT id FROM bancos_ativos WHERE (banco_nome = ? OR banco_codigo = ?) AND empresa_id = ?";
+        $stmt_check = $conn->prepare($sql_check);
+        $stmt_check->bind_param("ssi", $banco_nome, $banco_codigo, $empresa_id);
+        $stmt_check->execute();
+        $result_check = $stmt_check->get_result();
+        
+        if ($result_check->num_rows > 0) {
+            // Se já existe, apenas atualizar o status
+            $existing_banco = $result_check->fetch_assoc();
+            $sql = "UPDATE bancos_ativos SET ativo = ? WHERE id = ? AND empresa_id = ?";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("iii", $ativo, $existing_banco['id'], $empresa_id);
+            
+            if ($stmt->execute()) {
+                echo json_encode(['success' => true, 'banco_id' => $existing_banco['id']]);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Erro ao atualizar banco: ' . $conn->error]);
+            }
+            exit;
+        } else {
+            // Criar novo banco predefinido
+            $sql = "INSERT INTO bancos_ativos (empresa_id, banco_nome, banco_codigo, ativo) VALUES (?, ?, ?, ?)";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("issi", $empresa_id, $banco_nome, $banco_codigo, $ativo);
+            
+            if ($stmt->execute()) {
+                $novo_id = $conn->insert_id;
+                echo json_encode(['success' => true, 'banco_id' => $novo_id]);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Erro ao criar banco: ' . $conn->error]);
+            }
+            exit;
+        }
+    } else {
+        // Para bancos já cadastrados, atualizar status normalmente
+        $sql = "UPDATE bancos_ativos SET ativo = ? WHERE id = ? AND empresa_id = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("iii", $ativo, $id, $empresa_id);
+    }
 } else {
     // Edição de dados do banco
     $id = $_POST['id'] ?? 0;

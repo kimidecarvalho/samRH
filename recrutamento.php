@@ -539,7 +539,7 @@ while ($row = $result_status->fetch_assoc()) {
         <ul class="nav-menu">           
             <a href="funcionarios.php"><li>Funcionários</li></a>
             <a href="registro.php"><li>Novo Funcionário</li></a>
-            <li>Processamento Salarial</li>
+            <a href="processamento_salarial.php"><li>Processamento Salarial</li></a>
             <a href="docs.php"><li>Documentos</li></a>
             <a href="registro_ponto.php"><li>Registro de Ponto</li></a>
             <a href="ausencias.php"><li>Ausências</li></a>

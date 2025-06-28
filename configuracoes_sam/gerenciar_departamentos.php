@@ -43,6 +43,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_GET['acao']) && $_GET['acao'] == 'excluir' && isset($_GET['id'])) {
         $id = $_GET['id'];
         
+        // Buscar nome do departamento
+        $sql_nome = "SELECT nome FROM departamentos WHERE id = ? AND empresa_id = ?";
+        $stmt_nome = $conn->prepare($sql_nome);
+        $stmt_nome->bind_param("ii", $id, $empresa_id);
+        $stmt_nome->execute();
+        $result_nome = $stmt_nome->get_result();
+        $departamento = $result_nome->fetch_assoc();
+        
+        if (!$departamento) {
+            $_SESSION['erro'] = "Departamento não encontrado.";
+            header("Location: rh_config.php");
+            exit;
+        }
+        
         // Verificar se existem cargos vinculados
         $sql = "SELECT COUNT(*) as total FROM cargos WHERE departamento_id = ?";
         $stmt = $conn->prepare($sql);
@@ -52,14 +66,27 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $row = $result->fetch_assoc();
         
         if ($row['total'] > 0) {
-            $_SESSION['erro'] = "Não é possível excluir o departamento pois existem cargos vinculados a ele.";
+            // Buscar detalhes dos cargos vinculados
+            $sql_cargos = "SELECT nome FROM cargos WHERE departamento_id = ? ORDER BY nome";
+            $stmt_cargos = $conn->prepare($sql_cargos);
+            $stmt_cargos->bind_param("i", $id);
+            $stmt_cargos->execute();
+            $result_cargos = $stmt_cargos->get_result();
+            
+            $cargos_lista = [];
+            while ($cargo = $result_cargos->fetch_assoc()) {
+                $cargos_lista[] = $cargo['nome'];
+            }
+            
+            $cargos_texto = implode(', ', $cargos_lista);
+            $_SESSION['erro'] = "Não é possível excluir o departamento <strong>'{$departamento['nome']}'</strong> pois existem <strong>{$row['total']}</strong> cargo(s) vinculado(s): <strong>{$cargos_texto}</strong>. Remova primeiro todos os cargos deste departamento.";
         } else {
             $sql = "DELETE FROM departamentos WHERE id = ? AND empresa_id = ?";
             $stmt = $conn->prepare($sql);
             $stmt->bind_param("ii", $id, $empresa_id);
             
             if ($stmt->execute()) {
-                $_SESSION['mensagem'] = "Departamento excluído com sucesso!";
+                $_SESSION['mensagem'] = "Departamento <strong>'{$departamento['nome']}'</strong> excluído com sucesso!";
             } else {
                 $_SESSION['erro'] = "Erro ao excluir departamento: " . $conn->error;
             }

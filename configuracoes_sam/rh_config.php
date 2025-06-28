@@ -66,13 +66,55 @@ $predefinidos = [
     'Banco Millennium Atlântico', 'Banco Sol', 'Banco Valor', 'Banco VTB África', 'Banco Yetu'
 ];
 $predef_codigos = ['BAI','BIC','BCGA','BCA','BDA','BPC','BE','BFA','BMA','SOL','VALOR','VTB','YETU'];
+
+// Criar array com todos os bancos predefinidos
+$todos_bancos_predefinidos = [
+    ['banco_nome' => 'Banco Angolano de Investimentos (BAI)', 'banco_codigo' => 'BAI'],
+    ['banco_nome' => 'Banco BIC', 'banco_codigo' => 'BIC'],
+    ['banco_nome' => 'Banco Caixa Geral Angola', 'banco_codigo' => 'BCGA'],
+    ['banco_nome' => 'Banco Comercial Angolano (BCA)', 'banco_codigo' => 'BCA'],
+    ['banco_nome' => 'Banco de Desenvolvimento de Angola (BDA)', 'banco_codigo' => 'BDA'],
+    ['banco_nome' => 'Banco de Poupança e Crédito (BPC)', 'banco_codigo' => 'BPC'],
+    ['banco_nome' => 'Banco Económico', 'banco_codigo' => 'BE'],
+    ['banco_nome' => 'Banco Fomento Angola (BFA)', 'banco_codigo' => 'BFA'],
+    ['banco_nome' => 'Banco Millennium Atlântico', 'banco_codigo' => 'BMA'],
+    ['banco_nome' => 'Banco Sol', 'banco_codigo' => 'SOL'],
+    ['banco_nome' => 'Banco Valor', 'banco_codigo' => 'VALOR'],
+    ['banco_nome' => 'Banco VTB África', 'banco_codigo' => 'VTB'],
+    ['banco_nome' => 'Banco Yetu', 'banco_codigo' => 'YETU']
+];
+
 $bancos_predefinidos = [];
 $bancos_usuario = [];
+
+// Processar bancos do banco de dados
 foreach ($bancos as $banco) {
     if (in_array($banco['banco_nome'], $predefinidos) || in_array($banco['banco_codigo'], $predef_codigos)) {
         $bancos_predefinidos[] = $banco;
     } else {
         $bancos_usuario[] = $banco;
+    }
+}
+
+// Adicionar bancos predefinidos que não estão no banco de dados
+foreach ($todos_bancos_predefinidos as $banco_predef) {
+    $encontrado = false;
+    foreach ($bancos_predefinidos as $banco_cadastrado) {
+        if ($banco_cadastrado['banco_nome'] === $banco_predef['banco_nome'] || 
+            $banco_cadastrado['banco_codigo'] === $banco_predef['banco_codigo']) {
+            $encontrado = true;
+            break;
+        }
+    }
+    
+    if (!$encontrado) {
+        // Adicionar banco predefinido não cadastrado (com valores padrão)
+        $bancos_predefinidos[] = [
+            'id' => 'predef_' . strtolower($banco_predef['banco_codigo']),
+            'banco_nome' => $banco_predef['banco_nome'],
+            'banco_codigo' => $banco_predef['banco_codigo'],
+            'ativo' => 0 // Por padrão, bancos predefinidos não cadastrados ficam inativos
+        ];
     }
 }
 
@@ -359,6 +401,23 @@ $conn->query($sql_popular_horarios);
     </div>
     
     <div class="main-content">
+        <!-- Sistema de Mensagens -->
+        <?php if (isset($_SESSION['mensagem'])): ?>
+            <div class="alert alert-success" style="background: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
+                <div><?= $_SESSION['mensagem'] ?></div>
+                <button type="button" class="btn-close" onclick="this.parentElement.style.display='none'" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #155724;">&times;</button>
+            </div>
+            <?php unset($_SESSION['mensagem']); ?>
+        <?php endif; ?>
+        
+        <?php if (isset($_SESSION['erro'])): ?>
+            <div class="alert alert-danger" style="background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
+                <div><?= $_SESSION['erro'] ?></div>
+                <button type="button" class="btn-close" onclick="this.parentElement.style.display='none'" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #721c24;">&times;</button>
+            </div>
+            <?php unset($_SESSION['erro']); ?>
+        <?php endif; ?>
+        
         <div class="profile-card">
             <h1>Configurações de Recursos Humanos</h1>
 
@@ -415,7 +474,7 @@ $conn->query($sql_popular_horarios);
                                             <form method="get" action="gerenciar_departamentos.php" style="display:inline;">
                                                 <input type="hidden" name="acao" value="excluir">
                                                 <input type="hidden" name="id" value="<?= $dep['id'] ?>">
-                                                <button type="submit" class="btn-danger"><i class="fa-solid fa-trash"></i> Excluir</button>
+                                                <button type="submit" class="btn-danger" title="Excluir departamento. Se houver cargos vinculados, a exclusão será bloqueada."><i class="fa-solid fa-trash"></i> Excluir</button>
                                             </form>
                                         </div>
                                     </td>
@@ -451,9 +510,18 @@ $conn->query($sql_popular_horarios);
                                     <td><?= htmlspecialchars($cargo['nome']) ?></td>
                                     <td><?= number_format($cargo['salario_base'], 2, ',', '.') ?> Kz</td>
                                     <td style="text-align:center;">
-                                        <button class="btn btn-primary btn-sm" onclick="calcularSubsidios(<?= $cargo['id'] ?>)">
-                                            Calcular Subsídios
-                                        </button>
+                                        <div class="action-btns">
+                                            <form method="get" action="#" style="display:inline;">
+                                                <input type="hidden" name="acao" value="editar">
+                                                <input type="hidden" name="id" value="<?= $cargo['id'] ?>">
+                                                <button type="button" class="btn-edit"><i class="fa-solid fa-pen-to-square"></i> Editar</button>
+                                            </form>
+                                            <form method="post" action="gerenciar_cargos.php" style="display:inline;">
+                                                <input type="hidden" name="acao" value="excluir">
+                                                <input type="hidden" name="id" value="<?= $cargo['id'] ?>">
+                                                <button type="submit" class="btn-danger" title="Excluir cargo. Se houver funcionários vinculados, a exclusão será bloqueada."><i class="fa-solid fa-trash"></i> Excluir</button>
+                                            </form>
+                                        </div>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -483,13 +551,16 @@ $conn->query($sql_popular_horarios);
                 <p>Selecione os bancos que deseja disponibilizar para pagamentos ou adicione um novo banco.</p>
                 <div class="bancos-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-bottom: 18px;">
                     <?php foreach (array_merge($bancos_predefinidos, $bancos_usuario) as $banco): ?>
-                        <?php $isUser = !in_array($banco['banco_nome'], $predefinidos) && !in_array($banco['banco_codigo'], $predef_codigos); ?>
+                        <?php 
+                        $isUser = !in_array($banco['banco_nome'], $predefinidos) && !in_array($banco['banco_codigo'], $predef_codigos);
+                        $isPredefinidoNaoCadastrado = strpos($banco['id'], 'predef_') === 0;
+                        ?>
                         <div class="banco-card<?= $banco['ativo'] ? ' banco-ativo' : '' ?><?= $isUser ? ' banco-user' : '' ?>" style="border-radius: 12px; border: 1.5px solid #e0e0e0; box-shadow: 0 2px 8px rgba(0,0,0,0.04); padding: 18px 18px 12px 18px; background: #fff; display: flex; flex-direction: column; position: relative; min-height: 160px;">
                             <div class="banco-nome" style="font-weight: 600; font-size: 1.08em; color: #222; margin-bottom: 2px; max-width: 75%; word-break: break-word;"> <?= htmlspecialchars($banco['banco_nome']) ?> </div>
                             <div class="banco-codigo" style="font-size: 0.98em; color: #888; margin-bottom: 10px;"> <?= htmlspecialchars($banco['banco_codigo']) ?> </div>
                             <div class="banco-toggle" style="margin-top: auto;">
                                 <label class="toggle-switch">
-                                    <input type="checkbox" class="toggle-banco" data-id="<?= $banco['id'] ?>" <?= $banco['ativo'] ? 'checked' : '' ?>>
+                                    <input type="checkbox" class="toggle-banco" data-id="<?= $banco['id'] ?>" data-predefinido="<?= $isPredefinidoNaoCadastrado ? '1' : '0' ?>" data-nome="<?= htmlspecialchars($banco['banco_nome']) ?>" data-codigo="<?= htmlspecialchars($banco['banco_codigo']) ?>" <?= $banco['ativo'] ? 'checked' : '' ?>>
                                     <span class="slider"></span>
                                 </label>
                                 <?php $ativo = (int)$banco['ativo']; ?>
@@ -821,14 +892,30 @@ function handleError(error, mensagemPadrao) {
 document.querySelectorAll('.toggle-banco').forEach(toggle => {
     toggle.addEventListener('change', async function() {
         try {
-        const bancoId = this.getAttribute('data-id');
-        const ativo = this.checked ? 1 : 0;
+            const bancoId = this.getAttribute('data-id');
+            const isPredefinido = this.getAttribute('data-predefinido') === '1';
+            const ativo = this.checked ? 1 : 0;
             
-            const response = await fetch('atualizar_banco.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: `id=${bancoId}&ativo=${ativo}`
-            });
+            let response;
+            
+            if (isPredefinido) {
+                // Para bancos predefinidos não cadastrados, enviar dados completos
+                const bancoNome = this.getAttribute('data-nome');
+                const bancoCodigo = this.getAttribute('data-codigo');
+                
+                response = await fetch('atualizar_banco.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `id=${bancoId}&ativo=${ativo}&banco_nome=${encodeURIComponent(bancoNome)}&banco_codigo=${encodeURIComponent(bancoCodigo)}&predefinido=1`
+                });
+            } else {
+                // Para bancos já cadastrados, usar o método normal
+                response = await fetch('atualizar_banco.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `id=${bancoId}&ativo=${ativo}`
+                });
+            }
             
             const data = await response.json();
             
@@ -838,6 +925,13 @@ document.querySelectorAll('.toggle-banco').forEach(toggle => {
                 statusSpan.textContent = ativo ? 'Ativo' : 'Inativo';
                 statusSpan.className = 'banco-status ' + (ativo ? 'ativo' : 'inativo');
                 statusSpan.style.color = ativo ? '#3EB489' : '#888';
+                
+                // Se foi um banco predefinido ativado, atualizar o ID para o real
+                if (isPredefinido && ativo === 1 && data.banco_id) {
+                    this.setAttribute('data-id', data.banco_id);
+                    this.setAttribute('data-predefinido', '0');
+                }
+                
                 mostrarMensagem('success', 'Status do banco atualizado com sucesso!');
             } else {
                 throw new Error(data.message || 'Erro ao atualizar banco');

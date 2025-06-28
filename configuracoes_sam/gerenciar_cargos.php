@@ -52,32 +52,47 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $_SESSION['erro'] = "Erro ao adicionar cargo: " . $conn->error;
                 }
                 break;
-        }
-    }
-} elseif ($_SERVER['REQUEST_METHOD'] == 'GET') {
-    if (isset($_GET['acao']) && $_GET['acao'] == 'excluir' && isset($_GET['id'])) {
-        $id = $_GET['id'];
-        
-        // Verificar se existem funcionários vinculados
-        $sql = "SELECT COUNT(*) as total FROM funcionario WHERE cargo = ?";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("s", $id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $row = $result->fetch_assoc();
-        
-        if ($row['total'] > 0) {
-            $_SESSION['erro'] = "Não é possível excluir o cargo pois existem funcionários vinculados a ele.";
-        } else {
-            $sql = "DELETE FROM cargos WHERE id = ? AND empresa_id = ?";
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param("ii", $id, $empresa_id);
-            
-            if ($stmt->execute()) {
-                $_SESSION['mensagem'] = "Cargo excluído com sucesso!";
-            } else {
-                $_SESSION['erro'] = "Erro ao excluir cargo: " . $conn->error;
-            }
+            case 'excluir':
+                $id = $_POST['id'];
+                
+                // Buscar nome do cargo
+                $sql_nome = "SELECT c.nome, d.nome as departamento_nome FROM cargos c 
+                            JOIN departamentos d ON c.departamento_id = d.id 
+                            WHERE c.id = ? AND c.empresa_id = ?";
+                $stmt_nome = $conn->prepare($sql_nome);
+                $stmt_nome->bind_param("ii", $id, $empresa_id);
+                $stmt_nome->execute();
+                $result_nome = $stmt_nome->get_result();
+                $cargo = $result_nome->fetch_assoc();
+                
+                if (!$cargo) {
+                    $_SESSION['erro'] = "Cargo não encontrado.";
+                    header("Location: rh_config.php");
+                    exit;
+                }
+                
+                // Verificar se existem funcionários vinculados
+                $sql = "SELECT COUNT(*) as total FROM funcionario WHERE cargo = ?";
+                $stmt = $conn->prepare($sql);
+                $stmt->bind_param("i", $id);
+                $stmt->execute();
+                $result = $stmt->get_result();
+                $row = $result->fetch_assoc();
+                
+                if ($row['total'] > 0) {
+                    $_SESSION['erro'] = "Não é possível excluir o cargo <strong>'{$cargo['nome']}'</strong> do departamento <strong>'{$cargo['departamento_nome']}'</strong> pois existem <strong>{$row['total']}</strong> funcionário(s) vinculado(s). Transfira ou remova primeiro todos os funcionários deste cargo.";
+                } else {
+                    $sql = "DELETE FROM cargos WHERE id = ? AND empresa_id = ?";
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param("ii", $id, $empresa_id);
+                    
+                    if ($stmt->execute()) {
+                        $_SESSION['mensagem'] = "Cargo <strong>'{$cargo['nome']}'</strong> do departamento <strong>'{$cargo['departamento_nome']}'</strong> excluído com sucesso!";
+                    } else {
+                        $_SESSION['erro'] = "Erro ao excluir cargo: " . $conn->error;
+                    }
+                }
+                break;
         }
     }
 }

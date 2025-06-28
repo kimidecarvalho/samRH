@@ -72,7 +72,7 @@ if (isset($_GET['folder']) && isset($_GET['employeeId'])) {
         <ul class="nav-menu">           
             <a href="funcionarios.php"><li>Funcionários</li></a>
             <a href="registro.php"><li>Novo Funcionário</li></a>
-            <li>Processamento Salarial</li>
+            <a href="processamento_salarial.php "><li>Processamento Salarial</li></a>
             <a href="docs.php"><li class="active">Documentos</li></a>
             <a href="registro_ponto.php"><li>Registro de Ponto</li></a>
             <a href="ausencias.php"><li>Ausências</li></a>
@@ -108,11 +108,11 @@ if (isset($_GET['folder']) && isset($_GET['employeeId'])) {
         <ul class="employee-list" id="employeeList">
             <?php
             // Consulta para recuperar os funcionários filtrados por empresa_id
-            $sql = "SELECT id_fun, nome FROM funcionario WHERE empresa_id = $empresa_id";
+            $sql = "SELECT id_fun, SUBSTRING(num_mecanografico, 5) as numero_id, nome FROM funcionario WHERE empresa_id = $empresa_id";
             $result = mysqli_query($conn, $sql);
 
             while ($row = mysqli_fetch_assoc($result)) {
-                echo '<li class="employee-item" data-id="' . $row['id_fun'] . '">' . $row['id_fun'] . ' - ' . $row['nome'] . '</li>';
+                echo '<li class="employee-item" data-id="' . $row['id_fun'] . '">' . $row['numero_id'] . ' - ' . $row['nome'] . '</li>';
             }
             ?>
         </ul>
@@ -280,7 +280,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <td>${doc.data}</td>
                         <td class="clickable">${doc.descricao}</td>
                         <td class="clickable">${doc.anexo}</td>
-                        <td>${doc.num_funcionario}</td>
+                        <td>${doc.numero_id}</td>
                     `;
                     documentsTableBody.appendChild(row);
                 });
@@ -338,8 +338,46 @@ document.addEventListener('DOMContentLoaded', function() {
                 confirmButtonText: 'Enviar Documento',
                 cancelButtonText: 'Cancelar',
                 preConfirm: () => {
-                    // Envia o formulário
-                    document.getElementById('fileUploadForm').submit();
+                    // Cria um FormData para enviar via AJAX
+                    const formData = new FormData();
+                    formData.append('document', fileInput.files[0]);
+                    formData.append('folder', selectedFolder.getAttribute('data-folder'));
+                    formData.append('funcionario_id', selectedEmployee.getAttribute('data-id'));
+
+                    // Envia via AJAX
+                    return fetch('upload.php', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'Sucesso!',
+                                text: data.message,
+                                confirmButtonText: 'OK'
+                            }).then(() => {
+                                // Recarrega a página ou atualiza a lista de documentos
+                                location.reload();
+                            });
+                        } else {
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Erro!',
+                                text: data.message,
+                                confirmButtonText: 'OK'
+                            });
+                        }
+                    })
+                    .catch(error => {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Erro!',
+                            text: 'Ocorreu um erro durante o upload.',
+                            confirmButtonText: 'OK'
+                        });
+                    });
                 }
             });
         }
